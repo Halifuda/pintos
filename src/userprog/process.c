@@ -26,20 +26,35 @@ static bool load (const char *cmdline, void (**eip) (void), void **esp);
    before process_execute() returns.  Returns the new process's
    thread id, or TID_ERROR if the thread cannot be created. */
 tid_t
-process_execute (const char *file_name) 
+process_execute (const char *file_args) 
 {
   char *fn_copy;
   tid_t tid;
+
+  /* check if arguments size exceed page size. */
+  if (strlen(file_args) + 4 >= PGSIZE) return TID_ERROR;
 
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
   fn_copy = palloc_get_page (0);
   if (fn_copy == NULL)
     return TID_ERROR;
-  strlcpy (fn_copy, file_name, PGSIZE);
 
-  /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+  /* parsing arguments into separated strings. */
+  char *token = fn_copy, *save_ptr;
+  int argc = 0, slen = 0;
+  for (token = strtok_r(file_args, " ", &save_ptr); token != NULL;
+        token = strtok_r(NULL, " ", &save_ptr)) 
+  {
+      int len = strlen(token) + 1;
+      ++argc;
+      strlcpy(fn_copy + slen + 4, file_args + slen, len);
+      slen += len;
+  }
+  *(int *)fn_copy = argc;
+
+  /* Create a new thread to execute FILE_ARGS. */
+  tid = thread_create (file_args, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
   return tid;
@@ -48,21 +63,55 @@ process_execute (const char *file_name)
 /** A thread function that loads a user process and starts it
    running. */
 static void
-start_process (void *file_name_)
+start_process (void *file_args_)
 {
-  char *file_name = file_name_;
+  char *file_args = file_args_;
   struct intr_frame if_;
   bool success;
+
+  /* parsing argc from file_args. */
+  int argc = *(int *)file_args;
+  file_args += 4;
 
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-  success = load (file_name, &if_.eip, &if_.esp);
+  success = load (file_args, &if_.eip, &if_.esp);
+
+  /* copying arguments onto stack, where argv[0] on the very top an so on. */
+  char *token = file_args;
+  int slen = 0;
+  for (int cnt = 0; cnt < argc; ++cnt)
+  {
+      int len = strlen(token) + 1;
+      if_.esp = (char *)if_.esp - len;
+      strlcpy((char *)if_.esp, token, len);
+      token += len;
+      slen += len;
+  }
+  /* align esp by 4. */
+  slen = (4 - slen % 4) % 4;
+  if_.esp = (char *)if_.esp - slen;
+
+  /* putting argv pointers on stack in a reversed order. */
+  token = (char *)if_.esp;
+  for (int cnt = 0; cnt < argc; ++cnt)
+  {
+      int len = strlen(token) + 1;
+      if_.esp = (char **)if_.esp - 1;
+      *(char **)if_.esp = token;
+      token += len;
+  } 
+  /* puting argc on stack. */
+  *(int *)if_.esp = argc;
+  /* simulate a return address. */
+  if_.esp = (int *)if_.esp - 1;
 
   /* If load failed, quit. */
-  palloc_free_page (file_name);
+      palloc_free_page(file_args - 4); 
+      // need -4 because file_args should be the 0x0 of a page.
   if (!success) 
     thread_exit ();
 
@@ -85,10 +134,16 @@ start_process (void *file_name_)
 
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
-int
-process_wait (tid_t child_tid UNUSED) 
+int process_wait(tid_t child_tid) 
 {
-  return -1;
+    struct finding_arg fa;
+    fa.tid = child_tid;
+    fa.tptr = NULL;
+    enum intr_level old_level = intr_disable();
+    thread_foreach(find_thread, (void *)&fa);
+    intr_set_level(old_level);
+    if (fa.tptr == NULL) return -1;
+    while (fa.tptr->status == THREAD_READY || fa.tptr->status == THREAD_BLOCKED) thread_yield();
 }
 
 /** Free the current process's resources. */
