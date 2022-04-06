@@ -54,9 +54,15 @@ process_execute (const char *file_args)
   }
   *(int *)fn_copy = argc;
   char *file_name = fn_copy + 4;
+  /* check if the user stack page could contain these arguments. */
+  if (slen + argc * 4 + 16 + (4 - slen % 4) % 4 >= PGSIZE)
+  {
+      palloc_free_page(fn_copy);
+      return TID_ERROR;
+  }
 
   /* Create a new thread to execute FILE_ARGS. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+  tid = thread_create(file_name, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
   return tid;
@@ -146,6 +152,7 @@ start_process (void *file_args_)
    does nothing. */
 int process_wait(tid_t child_tid) 
 {
+    if (child_tid == -1) return -1;
     struct finding_arg fa;
     fa.tid = child_tid;
     fa.tptr = NULL;
@@ -153,7 +160,11 @@ int process_wait(tid_t child_tid)
     thread_foreach(find_thread, (void *)&fa);
     intr_set_level(old_level);
     if (fa.tptr == NULL || fa.tptr->status == THREAD_DYING) return -1;
-    while (fa.tptr->status == THREAD_READY || fa.tptr->status == THREAD_BLOCKED) thread_yield();
+    while (fa.tptr->status >= 0 && fa.tptr->status < 3){
+      while (fa.tptr->status == THREAD_READY || fa.tptr->status == THREAD_BLOCKED) {
+        thread_yield();
+      }
+    }
 }
 
 /** Free the current process's resources. */

@@ -12,6 +12,11 @@ syscall_init (void)
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
 
+static void syscall_halt(struct intr_frame *f, int arg)
+{
+    shutdown_power_off();
+}
+
 static void syscall_exit(struct intr_frame *f, int exid)
 {
     printf("%s: exit(%d)\n", thread_current()->name, exid);
@@ -31,10 +36,12 @@ syscall_handler (struct intr_frame *f)
   int syscall_arg = *((int *)(f->esp) + 1);
   switch(syscall_num)
   {
-    case 1:
+    case SYS_HALT:
+        syscall_halt(f, syscall_arg);
+    case SYS_EXIT:
         syscall_exit(f, syscall_arg);
         return;
-    case 9:
+    case SYS_WRITE:
         syscall_write(f, syscall_arg);
         return;
     default:
