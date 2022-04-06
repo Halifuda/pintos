@@ -19,7 +19,12 @@ static void syscall_halt(struct intr_frame *f, int arg)
 
 static void syscall_exit(struct intr_frame *f, int exid)
 {
-    printf("%s: exit(%d)\n", thread_current()->name, exid);
+    /* modify child_passport information. */
+    struct child_passport *pp = 
+      list_entry(thread_current()->chl_elem, struct child_passport, elem);
+    pp->exit_id = exid;
+    pp->exited = true;
+    /* exit. */
     thread_exit();
 }
 

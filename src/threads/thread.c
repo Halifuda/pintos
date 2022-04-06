@@ -8,6 +8,7 @@
 #include "threads/interrupt.h"
 #include "threads/intr-stubs.h"
 #include "threads/palloc.h"
+#include "threads/malloc.h"
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
@@ -182,6 +183,14 @@ thread_create (const char *name, int priority,
   /* Initialize thread. */
   init_thread (t, name, priority);
   tid = t->tid = allocate_tid ();
+  t->paid = thread_current()->tid;
+  struct child_passport *cp =
+      (struct child_passport *)malloc(sizeof(struct child_passport));
+  cp->tid = t->tid;
+  cp->exit_id = 0;
+  cp->exited = false;
+  list_push_back(&thread_current()->childlist, &cp->elem);
+  t->chl_elem = &cp->elem;
 
   /* Stack frame for kernel_thread(). */
   kf = alloc_frame (t, sizeof *kf);
@@ -463,6 +472,9 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
+  t->paid = -1;
+  list_init(&t->childlist);
+  t->chl_elem = NULL;
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
@@ -583,6 +595,7 @@ allocate_tid (void)
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
 
+/** thread_action_func for find a thread by its tid. */
 void find_thread(struct thread *t, void *aux) 
 {
     struct finding_arg *fa = (struct finding_arg *)aux;

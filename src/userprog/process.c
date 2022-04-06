@@ -152,19 +152,43 @@ start_process (void *file_args_)
    does nothing. */
 int process_wait(tid_t child_tid) 
 {
+    /* ERROR tid. */
     if (child_tid == -1) return -1;
+    /* find the child thread. */
     struct finding_arg fa;
     fa.tid = child_tid;
     fa.tptr = NULL;
     enum intr_level old_level = intr_disable();
     thread_foreach(find_thread, (void *)&fa);
     intr_set_level(old_level);
-    if (fa.tptr == NULL || fa.tptr->status == THREAD_DYING) return -1;
-    while (fa.tptr->status >= 0 && fa.tptr->status < 3){
-      while (fa.tptr->status == THREAD_READY || fa.tptr->status == THREAD_BLOCKED) {
-        thread_yield();
-      }
+    /* no child or dead of not a child of this process. */
+    if (fa.tptr == NULL || fa.tptr->status == THREAD_DYING
+    || fa.tptr->paid != thread_current()->tid) return -1;
+    /* find the child passport. */
+    struct list *chl = &thread_current()->childlist;
+    struct list_elem *e;
+    struct child_passport *cp = NULL;
+    for (e = list_begin(chl); e != list_end(chl);e=e->next)
+    {
+        cp = list_entry(e, struct child_passport, elem);
+        if (cp->tid != child_tid) cp = NULL;
+        else
+            break;
     }
+    /* no child passport. */
+    if (cp == NULL) return -1;
+    while (fa.tptr->status >= 0 && fa.tptr->status < 3) {
+        /* couldn't understand why need 2 loops,
+         * but loop belows may break when the condition still remains TRUE.
+         */
+        while (fa.tptr->status == THREAD_READY ||
+               fa.tptr->status == THREAD_BLOCKED) {
+            thread_yield();
+        }
+    }
+    /* child haven't exited. */
+    if (cp->exited == false) return -1;
+    return cp->exit_id;
 }
 
 /** Free the current process's resources. */

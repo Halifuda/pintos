@@ -91,6 +91,9 @@ struct thread
     struct list_elem allelem;           /**< List element for all threads list. */
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /**< List element. */
+    tid_t paid;                         /**< parent tid. */
+    struct list childlist;              /**< child thread list. */
+    struct list_elem *chl_elem;         /**< pointer to the elem in this thread's child_passport. */
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
@@ -100,6 +103,22 @@ struct thread
     /* Owned by thread.c. */
     unsigned magic;                     /**< Detects stack overflow. */
   };
+
+/** A record in parent's childlist. */
+struct child_passport
+{
+    tid_t tid;             /**< child tid. */
+    int exit_id;           /**< exit_id(if really exited). */
+    bool exited;           /**< if exited. */
+    struct list_elem elem; /**< list element. */
+};
+
+/** A recording struct for find a thread by its tid. */
+struct finding_arg
+{
+    tid_t tid;
+    struct thread *tptr;
+};
 
 /** If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
@@ -128,13 +147,6 @@ void thread_yield (void);
 /** Performs some operation on thread t, given auxiliary data AUX. */
 typedef void thread_action_func (struct thread *t, void *aux);
 void thread_foreach (thread_action_func *, void *);
-
-struct finding_arg
-{
-    tid_t tid;
-    struct thread *tptr;
-};
-
 void find_thread(struct thread *, void *);
 
 int thread_get_priority (void);
