@@ -103,7 +103,7 @@ start_process (void *file_args_)
   slen = (4 - slen % 4) % 4;
   if_.esp = (char *)if_.esp - slen;
 
-  /* putting NULL in stack. */
+  /* putting NULL on stack. */
   if_.esp = (char **)if_.esp - 1;
   *(char **)if_.esp = NULL;
 
@@ -161,7 +161,7 @@ int process_wait(tid_t child_tid)
     enum intr_level old_level = intr_disable();
     thread_foreach(find_thread, (void *)&fa);
     intr_set_level(old_level);
-    /* no child or dead of not a child of this process. */
+    /* no child or dead or not a child of this process. */
     if (fa.tptr == NULL || fa.tptr->status == THREAD_DYING
     || fa.tptr->paid != thread_current()->tid) return -1;
     /* find the child passport. */
@@ -177,6 +177,7 @@ int process_wait(tid_t child_tid)
     }
     /* no child passport. */
     if (cp == NULL) return -1;
+    /* waiting int a infinite loop. */
     while (fa.tptr->status >= 0 && fa.tptr->status < 3) {
         /* couldn't understand why need 2 loops,
          * but loop belows may break when the condition still remains TRUE.
