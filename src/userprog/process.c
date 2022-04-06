@@ -31,6 +31,7 @@ process_execute (const char *file_args)
   char *fn_copy;
   tid_t tid;
 
+  char *argsptr = file_args;
   /* check if arguments size exceed page size. */
   if (strlen(file_args) + 4 >= PGSIZE) return TID_ERROR;
 
@@ -43,18 +44,19 @@ process_execute (const char *file_args)
   /* parsing arguments into separated strings. */
   char *token = fn_copy, *save_ptr;
   int argc = 0, slen = 0;
-  for (token = strtok_r(file_args, " ", &save_ptr); token != NULL;
+  for (token = strtok_r(argsptr, " ", &save_ptr); token != NULL;
         token = strtok_r(NULL, " ", &save_ptr)) 
   {
       int len = strlen(token) + 1;
       ++argc;
-      strlcpy(fn_copy + slen + 4, file_args + slen, len);
+      strlcpy(fn_copy + slen + 4, token, len);
       slen += len;
   }
   *(int *)fn_copy = argc;
+  char *file_name = fn_copy + 4;
 
   /* Create a new thread to execute FILE_ARGS. */
-  tid = thread_create (file_args, PRI_DEFAULT, start_process, fn_copy);
+  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
   return tid;
@@ -95,8 +97,12 @@ start_process (void *file_args_)
   slen = (4 - slen % 4) % 4;
   if_.esp = (char *)if_.esp - slen;
 
+  /* putting NULL in stack. */
+  if_.esp = (char **)if_.esp - 1;
+  *(char **)if_.esp = NULL;
+
   /* putting argv pointers on stack in a reversed order. */
-  token = (char *)if_.esp;
+  token = (char *)if_.esp + slen + 4;
   for (int cnt = 0; cnt < argc; ++cnt)
   {
       int len = strlen(token) + 1;
@@ -104,7 +110,11 @@ start_process (void *file_args_)
       *(char **)if_.esp = token;
       token += len;
   } 
+  /* puting argv on stack. */
+  if_.esp = (char **)if_.esp - 1;
+  *(char **)if_.esp = ((char **)if_.esp + 1);
   /* puting argc on stack. */
+  if_.esp = (int *)if_.esp - 1;
   *(int *)if_.esp = argc;
   /* simulate a return address. */
   if_.esp = (int *)if_.esp - 1;
@@ -142,7 +152,7 @@ int process_wait(tid_t child_tid)
     enum intr_level old_level = intr_disable();
     thread_foreach(find_thread, (void *)&fa);
     intr_set_level(old_level);
-    if (fa.tptr == NULL) return -1;
+    if (fa.tptr == NULL || fa.tptr->status == THREAD_DYING) return -1;
     while (fa.tptr->status == THREAD_READY || fa.tptr->status == THREAD_BLOCKED) thread_yield();
 }
 
