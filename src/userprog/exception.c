@@ -150,7 +150,7 @@ page_fault (struct intr_frame *f)
   user = (f->error_code & PF_U) != 0;
   /* If page_fault is caused by a syscall, simply do belows.
      Code from pintosbook. */
-  if (f->esp_dummy == 0x30) 
+  if (!user) 
   {
     f->eip = (void (*)(void))f->eax;
     f->eax = -1;

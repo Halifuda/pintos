@@ -87,7 +87,7 @@ static int read_user(const uint8_t *uaddr, uint8_t *buffer, unsigned size)
     return (int)(size - n);
 }
 
-/* Read 4 bytes from user memory. */
+/* Read 4 bytes from user memory. -1 if error occured. */
 static int read_user_int(const uint8_t *uaddr)
 {
     int *buffer = (int *)malloc(sizeof(int));
@@ -143,11 +143,14 @@ static void syscall_halt(struct intr_frame *f)
 }
 
 /* Handle syscall EXIT. Record exit_id into child_passport.
-   Then call thread_exit(). */
-static void syscall_exit(struct intr_frame *f)
+   Then call thread_exit(). 
+   caller == 0 means process call this.
+   caller == -1 means syscall meet a failure and call this. */
+static void syscall_exit(struct intr_frame *f, int caller)
 {
     /* read exit status. read error will cause -1. */
-    int exid = read_user_int(((uint8_t *)f->esp + 4));
+    int exid = caller;
+    if(exid == 0) exid = read_user_int(((uint8_t *)f->esp + 4));
     /* modify child_passport information. */
     struct child_passport *pp = 
       list_entry(thread_current()->chl_elem, struct child_passport, elem);
@@ -185,9 +188,8 @@ syscall_handler (struct intr_frame *f)
     int syscall_num = read_user_int(f->esp);
     if(read_errno != READ_NO_ERROR)
     {
-        printf("failed to read system call number\n");
-        f->esp_dummy = old_esp_dummy;
-        thread_exit();
+      /* When failed to read syscall arguments, process should have return in -1. */
+      syscall_exit(f, -1);
     }
     int res = 0; /* possible return value. */
     switch (syscall_num) {
@@ -195,7 +197,7 @@ syscall_handler (struct intr_frame *f)
             syscall_halt(f);
             return; // UN_REACHED
         case SYS_EXIT:
-            syscall_exit(f);
+            syscall_exit(f, 0);
             f->esp_dummy = old_esp_dummy;
             return;
         case SYS_WRITE:
