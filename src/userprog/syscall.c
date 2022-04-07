@@ -4,13 +4,68 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/malloc.h"
+#include "threads/synch.h"
 #include "threads/vaddr.h"
 
 static void syscall_handler (struct intr_frame *);
 
+/** recording error caused by read. */
+static enum read_error_number {
+    READ_NO_ERROR,    /**< no error occur. */
+    READ_NULL_BUFFER, /**< empty buffer. */
+    READ_OVERFLOW,    /**< read overflow. */
+    READ_ACTUAL_ERROR /**< error during actual read. */
+} read_errno;
+static struct lock read_errno_lock; /**< lock for read_errno. */
+
+/** recording error caused by read. */
+static enum write_error_number {
+    WRITE_NO_ERROR,    /**< no error occur. */
+    WRITE_NULL_BUFFER, /**< empty buffer. */
+    WRITE_OVERFLOW,    /**< read overflow. */
+    WRITE_ACTUAL_ERROR /**< error during actual read. */
+} write_errno;
+static struct lock write_errno_lock; /**< lock for write_errno. */
+
+/* Acquire lock and set read error number. */
+static void set_read_errno(enum read_error_number no) 
+{
+    lock_acquire(&read_errno_lock);
+    read_errno = no;
+    lock_release(&read_errno_lock);
+}
+
+/* Acquire lock and get read error number. */
+static enum read_error_number get_read_errno(void) 
+{
+    lock_acquire(&read_errno_lock);
+    enum read_error_number no = read_errno;
+    lock_release(&read_errno_lock);
+    return no;
+}
+
+/* Acquire lock and set write error number. */
+static void set_write_errno(enum write_error_number no) 
+{
+    lock_acquire(&write_errno_lock);
+    write_errno = no;
+    lock_release(&write_errno_lock);
+}
+
+/* Acquire lock and get write error number. */
+static enum write_error_number get_write_errno(void) 
+{
+    lock_acquire(&write_errno_lock);
+    enum write_error_number no = write_errno;
+    lock_release(&write_errno_lock);
+    return no;
+}
+
 void
 syscall_init (void) 
 {
+    lock_init(&read_errno_lock);
+    lock_init(&write_errno_lock);
     intr_register_int(0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
 
@@ -36,39 +91,24 @@ static bool put_user(uint8_t *udst, uint8_t byte) {
     return error_code != -1;
 }
 
-/** recording error caused by read. */
-static enum read_error_number {
-    READ_NO_ERROR,    /**< no error occur. */
-    READ_NULL_BUFFER, /**< empty buffer. */
-    READ_OVERFLOW,    /**< read overflow. */
-    READ_ACTUAL_ERROR /**< error during actual read. */
-} read_errno;         
-
-/** recording error caused by read. */
-static enum write_error_number 
-{
-    WRITE_NO_ERROR,    /**< no error occur. */
-    WRITE_NULL_BUFFER, /**< empty buffer. */
-    WRITE_OVERFLOW,    /**< read overflow. */
-    WRITE_ACTUAL_ERROR   /**< error during actual read. */
-} write_errno;
-
 /* Read n bytes from user memory. Return count that remaining not read. 
-   -1 if error occured. */
+   -1 if error occured. 
+   Will indirectly acquire read lock. */
 static int read_user(const uint8_t *uaddr, uint8_t *buffer, unsigned size)
 {
-    read_errno = READ_NO_ERROR;
+    set_read_errno(READ_NO_ERROR);
+
     if (size == 0) return 0;                  // mustn't <= 0 because of unsigned
     if (buffer == NULL)                       // empty buffer
     {
-        read_errno = READ_NULL_BUFFER;
+        set_read_errno(READ_NULL_BUFFER);
         return -1;
     }
-    if (uaddr + size > PHYS_BASE)             // overflow user space
+    if (uaddr + size > PHYS_BASE)  // overflow user space
     {
-        read_errno = READ_OVERFLOW;
-        return -1; 
-    } 
+        set_read_errno(READ_OVERFLOW);
+        return -1;
+    }
     /* start read. */
     unsigned n = 0;
     int bytebuf = 0;
@@ -79,39 +119,43 @@ static int read_user(const uint8_t *uaddr, uint8_t *buffer, unsigned size)
         buffer[n++] = bytebuf;
         ++ptr;
     } while (n < size); /* trust the caller to ensure the buffer is sufficient. */
-    if (bytebuf < 0)                          // actual read error
+    if (bytebuf < 0)    // actual read error
     {
-        read_errno = READ_ACTUAL_ERROR;
+        set_read_errno(READ_ACTUAL_ERROR);
         return -1;
     }
     return (int)(size - n);
 }
 
-/* Read 4 bytes from user memory. -1 if error occured. */
+/* Read 4 bytes from user memory. -1 if error occured. 
+   Will indirectly acquire read lock. */
 static int read_user_int(const uint8_t *uaddr)
 {
     int *buffer = (int *)malloc(sizeof(int));
     int n = read_user(uaddr, buffer, sizeof(int));
     int res = -1;
-    if (read_errno == READ_NO_ERROR) res = *buffer;
+    enum read_error_number no = get_read_errno();
+    if (no == READ_NO_ERROR) res = *buffer;
     free(buffer);
     return res;
 }
 
 /* Write n bytes to user memory. Return cont that remaining not writen. 
-   -1 if error occured. */
+   -1 if error occured. 
+   Will indirectly acquire write lock. */
 static int write_user(uint8_t *udst, const uint8_t *buffer, unsigned size) 
 {
-    write_errno = WRITE_NO_ERROR;
+    set_write_errno(WRITE_NO_ERROR);
+
     if (size == 0) return 0;                    // mustn't <= 0 because of unsigned
     if (buffer == NULL)                         // empty buffer
     {
-        write_errno = WRITE_NULL_BUFFER;
+        set_write_errno(WRITE_NULL_BUFFER);
         return -1;
     }
-    if (udst + size > PHYS_BASE)                // overflow user space
+    if (udst + size > PHYS_BASE)  // overflow user space
     {
-        write_errno = WRITE_OVERFLOW;
+        set_write_errno(WRITE_OVERFLOW);
         return -1;
     }
     /* caculate max possible size. */
@@ -128,9 +172,9 @@ static int write_user(uint8_t *udst, const uint8_t *buffer, unsigned size)
         ++n;
         ++ptr;
     } while (n < max_size);
-    if (flag == false)                          // actual write error
+    if (flag == false)  // actual write error
     {
-        write_errno = WRITE_ACTUAL_ERROR;
+        set_write_errno(WRITE_ACTUAL_ERROR);
         return -1;
     }
     return (int)(size - n);
@@ -145,12 +189,13 @@ static void syscall_halt(struct intr_frame *f)
 /* Handle syscall EXIT. Record exit_id into child_passport.
    Then call thread_exit(). 
    caller == 0 means process call this.
-   caller == -1 means syscall meet a failure and call this. */
+   caller == -1 means syscall meet a failure and call this. 
+   Will indirectly acquire read lock. */
 static void syscall_exit(struct intr_frame *f, int caller)
 {
     /* read exit status. read error will cause -1. */
     int exid = caller;
-    if(exid == 0) exid = read_user_int(((uint8_t *)f->esp + 4));
+    if (exid == 0) exid = read_user_int(((uint8_t *)f->esp + 4));
     /* modify child_passport information. */
     struct child_passport *pp = 
       list_entry(thread_current()->chl_elem, struct child_passport, elem);
@@ -160,12 +205,14 @@ static void syscall_exit(struct intr_frame *f, int caller)
     thread_exit();
 }
 
-/* Handle syscall WRITE. Now simply call printf(). */
+/* Handle syscall WRITE. Now simply call printf(). 
+   Will indirectly acquire read lock. */
 static int syscall_write(struct intr_frame *f)
 {
     uint8_t *arg_buffer = (uint8_t *)malloc(sizeof(uint8_t) * 12);
     read_user(((uint8_t *)f->esp + 4), arg_buffer, 12);
-    if(read_errno != READ_NO_ERROR)
+    enum read_error_number no = get_read_errno();
+    if(no != READ_NO_ERROR)
     {
         free(arg_buffer);
         return 0;
@@ -178,37 +225,43 @@ static int syscall_write(struct intr_frame *f)
     return size;
 }
 
+/* Handler to system call.
+   Will indirectly acquire read lock. */
 static void
 syscall_handler (struct intr_frame *f) 
 {
-    /* esp_dummy is not used so we use it to notes this intr is a syscall. */
-    uint32_t old_esp_dummy = f->esp_dummy;
-    f->esp_dummy = 0x30;
     /* read syscall number. */
+    enum read_error_number old_errno = get_read_errno();
+
     int syscall_num = read_user_int(f->esp);
-    if(read_errno != READ_NO_ERROR)
+
+    enum read_error_number no = get_read_errno();
+    if (no != READ_NO_ERROR) 
     {
-      /* When failed to read syscall arguments, process should have return in -1. */
-      syscall_exit(f, -1);
+        /* When failed to read syscall arguments, process should have return in
+         * -1. */
+        syscall_exit(f, -1);
+        set_read_errno(old_errno);
     }
     int res = 0; /* possible return value. */
     switch (syscall_num) {
         case SYS_HALT:
+            set_read_errno(old_errno);
             syscall_halt(f);
             return; // UN_REACHED
         case SYS_EXIT:
             syscall_exit(f, 0);
-            f->esp_dummy = old_esp_dummy;
+            set_read_errno(old_errno);
             return;
         case SYS_WRITE:
             res = syscall_write(f);
             f->eax = res;
-            f->esp_dummy = old_esp_dummy;
+            set_read_errno(old_errno);
             return;
         default:
             break;
   }
-  printf ("system call: %d\n",syscall_num);
-  f->esp_dummy = old_esp_dummy;
+  printf("system call: %d\n", syscall_num);
+  set_read_errno(old_errno);
   thread_exit ();
 }
