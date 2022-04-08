@@ -6,6 +6,7 @@
 #include "threads/malloc.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "threads/palloc.h"
 #include "userprog/process.h"
 
 static void syscall_handler (struct intr_frame *);
@@ -148,13 +149,23 @@ static int read_user_int(const uint8_t *uaddr)
    -1 if any error occured. */
 static int user_strlen(const uint8_t *uaddr)
 {
+    set_read_errno(READ_NO_ERROR);
     int size = 0;
     char byte = 0;
     do {
         byte = get_user(uaddr + size);
-        if (byte == -1) return -1;
+        if (byte == -1) 
+        {
+            set_read_errno(READ_ACTUAL_ERROR);
+            return -1;
+        }
         ++size;
-    } while (byte != '\0');
+    } while (byte != '\0' && size < PGSIZE);
+    if(size >= PGSIZE) 
+    {
+        set_read_errno(READ_OVERFLOW);
+        return -1;
+    }
     return size;
 }
 
@@ -162,12 +173,20 @@ static int user_strlen(const uint8_t *uaddr)
    -1 if any error occured. */
 static int copy_user_str(const uint8_t *uaddr, char *dst, int size) 
 {
-    if (dst == NULL) return 0;
+    set_read_errno(READ_NO_ERROR);
+    if (dst == NULL) {
+        set_read_errno(READ_NULL_BUFFER);
+        return 0;
+    }
     char byte = 0;
     for (int i = 0; i < size; ++i)
     {
         dst[i] = get_user(uaddr + i);
-        if (dst[i] == -1) return -1;
+        if (dst[i] == -1) 
+        {
+            set_read_errno(READ_ACTUAL_ERROR);
+            return -1;
+        }
     }
     return size;
 }
@@ -291,9 +310,12 @@ static int syscall_exec(struct intr_frame *f)
         return -1;
     }
     /* copy user string on kernel here. */
-    /* get strlen. */
+    /* get strlen. 
+       Do not need to check errno for -1 return value is sufficient. */
     int len = user_strlen(cmd_line_user);
     if (len == -1) return -1;
+    /* Copy cmd_line to kernel.
+       Do not need to check errno for -1 return value is sufficient. */
     char *cmd_line_kernel = (char *)malloc(len * sizeof(char) + 1);
     if (cmd_line_kernel == NULL) return -1;
     int size = copy_user_str(cmd_line_user, cmd_line_kernel, len);
