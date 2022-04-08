@@ -171,16 +171,7 @@ int process_wait(tid_t child_tid)
 {
     /* ERROR tid. */
     if (child_tid == -1) return -1;
-    /* find the child thread. */
-    struct finding_arg fa;
-    fa.tid = child_tid;
-    fa.tptr = NULL;
-    enum intr_level old_level = intr_disable();
-    thread_foreach(find_thread, (void *)&fa);
-    intr_set_level(old_level);
-    /* not a child of this process. */
-    if (fa.tptr != NULL && fa.tptr->paid != thread_current()->tid) return -1;
-
+    
     /* find the child passport. */
     struct list *chl = &thread_current()->childlist;
     struct list_elem *e;
@@ -195,8 +186,9 @@ int process_wait(tid_t child_tid)
     /* no child passport. */
     if (cp == NULL) return -1;
 
+    struct thread *child = cp->child;
     /* call WAIT after child exited. */
-    if(fa.tptr == NULL && cp != NULL)
+    if(child == NULL)
     {
         int res = -1;
         if (cp->exited == true) res = cp->exit_id; 
@@ -207,13 +199,13 @@ int process_wait(tid_t child_tid)
         return res;
     }
     /* waiting int a infinite loop. */
-    while (fa.tptr->status >= 0 && fa.tptr->status < 3) 
+    while (child->status >= 0 && child->status < 3) 
     {
         /* couldn't understand why need 2 loops,
          * but loop belows may break when the condition still remains TRUE.
          */
-        while (fa.tptr->status == THREAD_READY ||
-               fa.tptr->status == THREAD_BLOCKED) 
+        while (child->status == THREAD_READY ||
+               child->status == THREAD_BLOCKED) 
         {
             thread_yield();
         }

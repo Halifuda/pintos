@@ -312,8 +312,16 @@ thread_exit (void)
       n = list_next(e);
       list_remove(e);
       struct child_passport *cp = list_entry(e, struct child_passport, elem);
-      cp->child->chl_elem = NULL;
-      cp->child->paid = -1;
+      if(cp->child == NULL)
+      {
+        /* free resources */
+      }
+      else
+      {
+        /* notice child that parent is dead. */
+        cp->child->chl_elem = NULL;
+        cp->child->paid = -1;
+      }
       free(cp);
 
   }
@@ -611,10 +619,3 @@ allocate_tid (void)
 /** Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
-
-/** thread_action_func for find a thread by its tid. */
-void find_thread(struct thread *t, void *aux) 
-{
-    struct finding_arg *fa = (struct finding_arg *)aux;
-    if (t->tid == fa->tid) fa->tptr = t;
-}

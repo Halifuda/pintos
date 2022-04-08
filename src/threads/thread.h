@@ -115,13 +115,6 @@ struct child_passport
     struct list_elem elem; /**< list element. */
 };
 
-/** A recording struct for find a thread by its tid. */
-struct finding_arg
-{
-    tid_t tid;
-    struct thread *tptr;
-};
-
 /** If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
@@ -149,7 +142,6 @@ void thread_yield (void);
 /** Performs some operation on thread t, given auxiliary data AUX. */
 typedef void thread_action_func (struct thread *t, void *aux);
 void thread_foreach (thread_action_func *, void *);
-void find_thread(struct thread *, void *);
 
 int thread_get_priority (void);
 void thread_set_priority (int);

@@ -267,7 +267,7 @@ static int syscall_write(struct intr_frame *f)
     return size;
 }
 
-/* The real interface that call process_execute(). */
+/* The real handler that calls process_execute(). Prepare work done by caller. */
 static int syscall_exec_handler(char *cmd_line)
 {
     lock_acquire(&filesys_lock);
@@ -309,6 +309,7 @@ static int syscall_exec(struct intr_frame *f)
     return res;
 }
 
+/* Handle WAIT syscall. just call process_wait(). */
 static int syscall_wait(struct intr_frame *f)
 {
     int child_pid = (int)read_user_int((int *)f->esp + 1);
