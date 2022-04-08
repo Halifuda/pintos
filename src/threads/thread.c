@@ -295,7 +295,10 @@ thread_exit (void)
 {
   ASSERT (!intr_context ());
 
-#ifdef USERPROG
+#ifdef USERPROG  
+  struct child_passport *cp =
+      list_entry(thread_current()->chl_elem, struct child_passport, elem);
+  if (cp->exited == false) thread_current()->exid = -1;
   process_exit ();
 #endif
 

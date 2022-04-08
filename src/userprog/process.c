@@ -252,6 +252,9 @@ process_exit (void)
   struct thread *cur = thread_current ();
   uint32_t *pd;
 
+  /* print exit status. */
+  printf("%s: exit(%d)\n", thread_current()->name, thread_current()->exid);
+
   fd_vec_free(&thread_current()->fdvector);
   if (cur->exec_file != NULL) file_allow_write(cur->exec_file);
   file_close(cur->exec_file);

@@ -293,7 +293,7 @@ static void syscall_exit(struct intr_frame *f, int caller)
     /* if child_passport doesn't exit, means parent has exited, remove self resouce. */
     if(thread_current()->chl_elem == NULL && thread_current()->paid == -1)
     {
-        /* free any resource. */
+        thread_current()->exid = -1;
     }
     else 
     {
@@ -302,9 +302,8 @@ static void syscall_exit(struct intr_frame *f, int caller)
             list_entry(thread_current()->chl_elem, struct child_passport, elem);
         pp->exit_id = exid;
         pp->exited = true;
+        thread_current()->exid = exid;
     }
-    /* print exit status. */
-    printf("%s: exit(%d)\n", thread_current()->name, exid);
     /* exit. */
     thread_exit();
 }
@@ -329,7 +328,7 @@ static int syscall_exec(struct intr_frame *f)
     char *cmd_line_kernel = copy_user_str((char **)f->esp + 1, &cper);
     if(cper > 0)
     {
-        if (cper == 1) syscall_exit(f, -1);
+        if (cper < 3) syscall_exit(f, -1);
         return -1;
     }
     int res = syscall_exec_handler(cmd_line_kernel);
@@ -357,7 +356,7 @@ static bool syscall_create(struct intr_frame *f)
     char *file_name_kernel = copy_user_str((char **)f->esp + 1, &cper);
     if (cper > 0) 
     {
-        if (cper == 1) syscall_exit(f, -1);
+        if (cper < 3) syscall_exit(f, -1);
         return false;
     }
 
@@ -492,6 +491,7 @@ static int syscall_read(struct intr_frame *f)
     enum read_error_number no = get_read_errno();
     if (no != READ_NO_ERROR) 
     {
+        syscall_exit(f, -1);
         free(arg_buffer);
         return 0;
     }
@@ -542,12 +542,14 @@ static int syscall_write_fd(struct file_descriptor *fd, const char *buffer, unsi
    Then check the fd validation, write right, if opened.
    Any error will return -1.
    This is a fd call, so it will init the fd vector. */
-static int syscall_write(struct intr_frame *f) {
+static int syscall_write(struct intr_frame *f) 
+{
     uint8_t *arg_buffer = (uint8_t *)malloc(sizeof(uint8_t) * 12);
     read_user(((uint8_t *)f->esp + 4), arg_buffer, 12);
     enum read_error_number no = get_read_errno();
     if (no != READ_NO_ERROR) 
     {
+        syscall_exit(f, -1);
         free(arg_buffer);
         return 0;
     }
