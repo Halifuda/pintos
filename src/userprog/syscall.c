@@ -531,7 +531,10 @@ static int syscall_write_stdout(const char *buffer, unsigned size)
 /* Write to console. */
 static int syscall_write_fd(struct file_descriptor *fd, const char *buffer, unsigned size)
 {
-    return file_write(fd->file, buffer, size);
+    lock_acquire(&filesys_lock);
+    int res = file_write(fd->file, buffer, size);
+    lock_release(&filesys_lock);
+    return res;
 }
 
 /* Handle syscall WRITE.
@@ -586,13 +589,55 @@ static int syscall_write(struct intr_frame *f) {
     return res;
 }
 
+/* Handle SEEK syscall. Simply call file_seek() with prepare work. */
+static void syscall_seek(struct intr_frame *f)
+{
+    int fdid = (int)read_user_int((int *)f->esp + 1);
+    unsigned pos = (unsigned)read_user_int((int *)f->esp + 2);
+    enum read_error_number no = get_read_errno();
+    if (no != READ_NO_ERROR) 
+    {
+        /* any bad read int should terminate process. */
+        syscall_exit(f, -1);
+        return;
+    }
+    struct file_descriptor *fd = get_fd_ptr(&thread_current()->fdvector, fdid);
+    if (fd == NULL || !get_fd_right(fd, FD_R) && !get_fd_right(fd, FD_W) 
+        || !fd->opened) return;
+    lock_acquire(&filesys_lock);
+    file_seek(fd->file, pos);
+    lock_release(&filesys_lock);
+    return;
+}
+
+static unsigned syscall_tell(struct intr_frame *f)
+{
+    int fdid = (int)read_user_int((int *)f->esp + 1);
+    enum read_error_number no = get_read_errno();
+    if (no != READ_NO_ERROR) {
+        /* any bad read int should terminate process. */
+        syscall_exit(f, -1);
+        return 0;
+    }
+    struct file_descriptor *fd = get_fd_ptr(&thread_current()->fdvector, fdid);
+    if (fd == NULL || !get_fd_right(fd, FD_R) && !get_fd_right(fd, FD_W) ||
+        !fd->opened)
+        return 0xffffffff;
+
+    lock_acquire(&filesys_lock);
+    unsigned pos = file_tell(fd->file);
+    lock_release(&filesys_lock);
+    return pos;
+}
+
 /* Handler to system call.
    Will indirectly acquire read lock. */
 static void
 syscall_handler (struct intr_frame *f) 
 {
     /* read syscall number. */
-    enum read_error_number old_errno = get_read_errno();
+    enum read_error_number old_r_errno = get_read_errno();
+    enum write_error_number old_w_errno = get_write_errno();
 
     int syscall_num = read_user_int(f->esp);
 
@@ -601,7 +646,8 @@ syscall_handler (struct intr_frame *f)
     {
         /* When failed to read syscall arguments, process should have return in
          * -1. */
-        set_read_errno(old_errno);
+        set_read_errno(old_r_errno);
+        set_write_errno(old_w_errno);
         syscall_exit(f, -1);
         return;
     }
@@ -609,66 +655,90 @@ syscall_handler (struct intr_frame *f)
     switch (syscall_num) 
     {
         case SYS_HALT:
-            set_read_errno(old_errno);
+            set_read_errno(old_r_errno);
+            set_write_errno(old_w_errno);
             syscall_halt(f);
             return; // UN_REACHED
 
         case SYS_EXIT:
             syscall_exit(f, 0);
-            set_read_errno(old_errno);
+            set_read_errno(old_r_errno);
+            set_write_errno(old_w_errno);
             return;
 
         case SYS_EXEC:
             res = syscall_exec(f);
             f->eax = res;
-            set_read_errno(old_errno);
+            set_read_errno(old_r_errno);
+            set_write_errno(old_w_errno);
             return;
         
         case SYS_WAIT:
             res = syscall_wait(f);
             f->eax = res;
-            set_read_errno(old_errno);
+            set_read_errno(old_r_errno);
+            set_write_errno(old_w_errno);
             return;
 
         case SYS_CREATE:
             res = syscall_create(f);
             f->eax = res;
-            set_read_errno(old_errno);
+            set_read_errno(old_r_errno);
+            set_write_errno(old_w_errno);
             return;
             
         case SYS_OPEN:
             res = syscall_open(f);
             f->eax = res;
-            set_read_errno(old_errno);
+            set_read_errno(old_r_errno);
+            set_write_errno(old_w_errno);
             return;
 
         case SYS_FILESIZE:
             res = syscall_filesize(f);
             f->eax = res;
-            set_read_errno(old_errno);
-            return;
-
-        case SYS_CLOSE:
-            syscall_close(f);
-            set_read_errno(old_errno);
+            set_read_errno(old_r_errno);
+            set_write_errno(old_w_errno);
             return;
 
         case SYS_READ:
             res = syscall_read(f);
             f->eax = res;
-            set_read_errno(old_errno);
+            set_read_errno(old_r_errno);
+            set_write_errno(old_w_errno);
             return;
 
         case SYS_WRITE: 
             res = syscall_write(f);
             f->eax = res;
-            set_read_errno(old_errno);
+            set_read_errno(old_r_errno);
+            set_write_errno(old_w_errno);
+            return;
+        
+        case SYS_SEEK:
+            syscall_seek(f);
+            set_read_errno(old_r_errno);
+            set_write_errno(old_w_errno);
+            return;
+        
+        case SYS_TELL:
+            res = syscall_tell(f);
+            f->eax = res;
+            set_read_errno(old_r_errno);
+            set_write_errno(old_w_errno);
+            return;
+
+        case SYS_CLOSE:
+            syscall_close(f);
+            set_read_errno(old_r_errno);
+            set_write_errno(old_w_errno);
             return;
 
         default:
             break;
   }
   printf("system call: %d\n", syscall_num);
-  set_read_errno(old_errno);
+  set_read_errno(old_r_errno);
+  set_write_errno(old_w_errno);
   thread_exit ();
 }
