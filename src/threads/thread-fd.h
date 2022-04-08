@@ -8,6 +8,7 @@
 #include "filesys/filesys.h"
 #include "filesys/inode.h"
 
+/* file descriptor for user process. */
 struct file_descriptor
 {
     int fd;             /**< fd number. */
@@ -16,6 +17,7 @@ struct file_descriptor
     struct file *file;  /**< related file. */
 };
 
+/* vector for user thread to save fd. */
 struct fd_vector
 {
     size_t size;                    /**< present size of fdvec. */

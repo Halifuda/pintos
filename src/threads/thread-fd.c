@@ -62,6 +62,7 @@ int fd_close(struct file_descriptor *fd)
 /* Find a fd struct pointer by fd id. */
 struct file_descriptor *get_fd_ptr(struct fd_vector *vec, int fdid)
 {
+    if (vec == NULL) return NULL;
     struct file_descriptor *fd = NULL;
     if(fdid >= vec->size) return NULL;
     fd = &vec->fdvec[fdid];
