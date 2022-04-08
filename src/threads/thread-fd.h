@@ -33,7 +33,7 @@ struct fd_vector
 #define FDV_SIZE 8 /* initial size for a fd vector. */
 
 /* macros for operating fd right. */
-#define get_fd_right(FD, RIGHT) ((FD)->right | RIGHT)
+#define get_fd_right(FD, RIGHT) ((FD)->right & RIGHT)
 #define add_fd_right(FD, RIGHT) ((FD)->right |= RIGHT)
 #define del_fd_right(FD, RIGHT) ((FD)->right &= (~RIGHT))
 #define clear_fd_right(FD) ((FD)->right = 0)

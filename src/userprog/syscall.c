@@ -9,6 +9,7 @@
 #include "threads/palloc.h"
 #include "userprog/process.h"
 #include "threads/thread-fd.h"
+#include "devices/input.h"
 
 static void syscall_handler (struct intr_frame *);
 
@@ -29,8 +30,6 @@ static enum write_error_number {
     WRITE_ACTUAL_ERROR /**< error during actual read. */
 } write_errno;
 static struct lock write_errno_lock; /**< lock for write_errno. */
-
-static struct lock filesys_lock; /**< lock for operating file system. */
 
 /* Acquire lock and set read error number. */
 static void set_read_errno(enum read_error_number no) 
@@ -237,7 +236,7 @@ static char *copy_user_str(const uint8_t *uaddrptr, int *error_status)
     return str_kernel;
 }
 
-/* Write n bytes to user memory. Return cont that remaining not writen. 
+/* Write n bytes to user memory. Return count that remaining not writen. 
    -1 if error occured. 
    Will indirectly acquire write lock. */
 static int write_user(uint8_t *udst, const uint8_t *buffer, unsigned size) 
@@ -255,20 +254,18 @@ static int write_user(uint8_t *udst, const uint8_t *buffer, unsigned size)
         set_write_errno(WRITE_OVERFLOW);
         return -1;
     }
-    /* caculate max possible size. */
-    unsigned max_size = sizeof(buffer);
-    if (max_size > size) max_size = size;
     /* start write. */
     unsigned n = 0;
     bool flag = true;
     uint8_t *ptr = udst;
     do
     {
-        flag = put_user(udst, buffer[n]);
+        flag = put_user(ptr, buffer[n]);
         if (flag == false) break;
+        if (buffer[n] == '\r') --ptr;
         ++n;
         ++ptr;
-    } while (n < max_size);
+    } while (n < size);
     if (flag == false)  // actual write error
     {
         set_write_errno(WRITE_ACTUAL_ERROR);
@@ -310,26 +307,6 @@ static void syscall_exit(struct intr_frame *f, int caller)
     printf("%s: exit(%d)\n", thread_current()->name, exid);
     /* exit. */
     thread_exit();
-}
-
-/* Handle syscall WRITE. Now simply call printf(). 
-   Will indirectly acquire read lock. */
-static int syscall_write(struct intr_frame *f)
-{
-    uint8_t *arg_buffer = (uint8_t *)malloc(sizeof(uint8_t) * 12);
-    read_user(((uint8_t *)f->esp + 4), arg_buffer, 12);
-    enum read_error_number no = get_read_errno();
-    if(no != READ_NO_ERROR)
-    {
-        free(arg_buffer);
-        return 0;
-    }
-    int fd = *(int *)arg_buffer;
-    char *buffer = *(char **)(arg_buffer + 4);
-    unsigned size = *(unsigned *)(arg_buffer + 8);
-    putbuf(buffer, size);
-    free(arg_buffer);
-    return size;
 }
 
 /* The real handler that calls process_execute(). Prepare work done by caller. */
@@ -399,6 +376,8 @@ static bool syscall_create(struct intr_frame *f)
     return res;
 }
 
+/* Handle OPEN syscall, return a fd.
+   This is a fd call, so it will init the fd vector. */
 static int syscall_open(struct intr_frame *f) 
 { 
 #ifndef USERPROG
@@ -415,7 +394,11 @@ static int syscall_open(struct intr_frame *f)
     check_first_fd();
     struct file_descriptor *fd = fdalloc(&thread_current()->fdvector, FD_OC | FD_R | FD_W);
     if (fd == NULL) return -1;
+
+    lock_acquire(&filesys_lock);
     struct file *file = filesys_open(file_name_kernel);
+    lock_release(&filesys_lock);
+
     if(file == NULL)
     {
         fdfree(&thread_current()->fdvector, fd->fd);
@@ -426,6 +409,8 @@ static int syscall_open(struct intr_frame *f)
     return fd->fd;
 }
 
+/* Handle CLOSE syscall.
+   This is a fd call, so it will init the fd vector. */
 static void syscall_close(struct intr_frame *f)
 {
 #ifndef USERPROG
@@ -437,6 +422,119 @@ static void syscall_close(struct intr_frame *f)
     check_first_fd();
     struct file_descriptor *fd = get_fd_ptr(&thread_current()->fdvector, fdid);
     fd_close(fd);
+}
+
+static int syscall_filesize(struct intr_frame *f)
+{
+    int fdid = (int)read_user_int((int *)f->esp + 1);
+    enum read_error_number no = get_read_errno();
+    if (no != READ_NO_ERROR) return -1;
+
+    struct file_descriptor *fd = get_fd_ptr(&thread_current()->fdvector, fdid);
+    if (fd == NULL || !get_fd_right(fd, FD_R | FD_V) 
+        || !fd->opened || fd->file == NULL) return -1;
+
+    lock_acquire(&filesys_lock);
+    int size = file_length(fd->file);
+    lock_release(&filesys_lock);
+    return size;
+}
+
+/* Read stdin to user memory. */
+static int syscall_read_stdin(char *buffer, unsigned size) 
+{
+    char *stdinbuffer = (char *)malloc(size * sizeof(char));
+    if (stdinbuffer == NULL) 
+    {
+        free(stdinbuffer);
+        return -1;
+    }
+
+    int n = 0;
+    while(n < size)
+        stdinbuffer[n++] = input_getc();
+    n = write_user(buffer, stdinbuffer, size);
+    free(stdinbuffer);
+    if (get_write_errno() != WRITE_NO_ERROR) return -1;
+    return n;
+}
+
+/* Read from fd except stdin. */
+static int syscall_read_fd(struct file_descriptor *fd, char *buffer, unsigned size)
+{
+    if (fd->file == NULL) return -1;
+    char *filebuffer = (char *)malloc(size * sizeof(char));
+    if (filebuffer == NULL) 
+    {
+        free(filebuffer);
+        return -1;
+    }
+
+    lock_acquire(&filesys_lock);
+    int n = file_read(fd->file, filebuffer, size);
+    lock_release(&filesys_lock);
+
+    n -= write_user(buffer, filebuffer, n);
+    free(filebuffer);
+    if (get_write_errno() != WRITE_NO_ERROR) return -1;
+    return n;
+}
+
+/* Handle syscall READ. 
+   Check if fd == 0, if so, read stdin.
+   Then check the fd validation, read right, if opened.
+   Any error will return -1. 
+   This is a fd call, so it will init the fd vector. */
+static int syscall_read(struct intr_frame *f) 
+{
+    uint8_t *arg_buffer = (uint8_t *)malloc(sizeof(uint8_t) * 12);
+    read_user(((uint8_t *)f->esp + 4), arg_buffer, 12);
+    enum read_error_number no = get_read_errno();
+    if (no != READ_NO_ERROR) 
+    {
+        free(arg_buffer);
+        return 0;
+    }
+    int fdid = *(int *)arg_buffer;
+    char *buffer = *(char **)(arg_buffer + 4);
+    unsigned size = *(unsigned *)(arg_buffer + 8);
+    if (size == 0) return 0;
+
+    check_first_fd();
+
+    int res = 0;
+    if (fdid == 0) res = syscall_read_stdin(buffer, size);
+    else
+    {
+        struct file_descriptor *fd = get_fd_ptr(&thread_current()->fdvector, fdid);
+        if (fd == NULL || !get_fd_right(fd, FD_R | FD_V) || !fd->opened) return -1;
+        res = syscall_read_fd(fd, buffer, size);
+    }
+    if(get_write_errno() == WRITE_OVERFLOW)
+    {
+        /* write overflow (exceed user space) should terminate the process. */
+        syscall_exit(f, -1);
+        return -1;
+    }
+    return res;
+}
+
+/* Handle syscall WRITE. Now simply call printf().
+   Will indirectly acquire read lock. */
+static int syscall_write(struct intr_frame *f) {
+    uint8_t *arg_buffer = (uint8_t *)malloc(sizeof(uint8_t) * 12);
+    read_user(((uint8_t *)f->esp + 4), arg_buffer, 12);
+    enum read_error_number no = get_read_errno();
+    if (no != READ_NO_ERROR) {
+        free(arg_buffer);
+        return 0;
+    }
+    int fd = *(int *)arg_buffer;
+    char *buffer = *(char **)(arg_buffer + 4);
+    unsigned size = *(unsigned *)(arg_buffer + 8);
+    putbuf(buffer, size);
+    free(arg_buffer);
+    return size;
 }
 
 /* Handler to system call.
@@ -495,8 +593,20 @@ syscall_handler (struct intr_frame *f)
             set_read_errno(old_errno);
             return;
 
+        case SYS_FILESIZE:
+            res = syscall_filesize(f);
+            f->eax = res;
+            set_read_errno(old_errno);
+            return;
+
         case SYS_CLOSE:
             syscall_close(f);
+            set_read_errno(old_errno);
+            return;
+
+        case SYS_READ:
+            res = syscall_read(f);
+            f->eax = res;
             set_read_errno(old_errno);
             return;
 

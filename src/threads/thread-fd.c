@@ -1,4 +1,6 @@
 #include "threads/thread-fd.h"
+#include "threads/synch.h"
+#include "userprog/syscall.h"
 
 /* Initialize a fd invalid. */
 void fd_init(struct file_descriptor *fd, int fdid) 
@@ -46,7 +48,12 @@ int fd_close(struct file_descriptor *fd)
     if(fd->opened)
     {
         fd->opened = false;
-        if (fd->file != NULL) file_close(fd->file);
+        if (fd->file != NULL)
+        {
+            lock_acquire(&filesys_lock);
+            file_close(fd->file);
+            lock_release(&filesys_lock);
+        }
         return 1;
     }
     return 0;
