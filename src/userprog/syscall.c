@@ -514,27 +514,76 @@ static int syscall_read(struct intr_frame *f)
     {
         /* write overflow (exceed user space) should terminate the process. */
         syscall_exit(f, -1);
+        free(arg_buffer);
         return -1;
     }
+    free(arg_buffer);
     return res;
 }
 
-/* Handle syscall WRITE. Now simply call printf().
-   Will indirectly acquire read lock. */
+/* Write to console. */
+static int syscall_write_stdout(const char *buffer, unsigned size)
+{
+    putbuf(buffer, size);
+    return size;
+}
+
+/* Write to console. */
+static int syscall_write_fd(struct file_descriptor *fd, const char *buffer, unsigned size)
+{
+    return file_write(fd->file, buffer, size);
+}
+
+/* Handle syscall WRITE.
+   Check if fd == 1, if so, write stdout.
+   Then check the fd validation, write right, if opened.
+   Any error will return -1.
+   This is a fd call, so it will init the fd vector. */
 static int syscall_write(struct intr_frame *f) {
     uint8_t *arg_buffer = (uint8_t *)malloc(sizeof(uint8_t) * 12);
     read_user(((uint8_t *)f->esp + 4), arg_buffer, 12);
     enum read_error_number no = get_read_errno();
-    if (no != READ_NO_ERROR) {
+    if (no != READ_NO_ERROR) 
+    {
         free(arg_buffer);
         return 0;
     }
-    int fd = *(int *)arg_buffer;
+    int fdid = *(int *)arg_buffer;
     char *buffer = *(char **)(arg_buffer + 4);
     unsigned size = *(unsigned *)(arg_buffer + 8);
-    putbuf(buffer, size);
+    if (size == 0) return 0;
+
+    /* copy string to kernel. */
+    char *kernelbuffer = (char *)malloc(size * sizeof(char) + 1);
+    if (kernelbuffer == NULL) 
+    {
+        free(arg_buffer);
+        return 0;
+    }
+
+    read_user(buffer, kernelbuffer, size);
+    if(get_read_errno() != READ_NO_ERROR)
+    {
+        /* bad copy should terminate process. */
+        free(arg_buffer);
+        free(kernelbuffer);
+        syscall_exit(f, -1);
+        return 0;
+    }
+
+    int res = 0;
+    if(fdid == 1) res = syscall_write_stdout(kernelbuffer, size);
+    else 
+    {
+        struct file_descriptor *fd =
+            get_fd_ptr(&thread_current()->fdvector, fdid);
+        if (fd == NULL || !get_fd_right(fd, FD_R | FD_V) || !fd->opened)
+            return -1;
+        res = syscall_write_fd(fd, kernelbuffer, size);
+    }
     free(arg_buffer);
-    return size;
+    free(kernelbuffer);
+    return res;
 }
 
 /* Handler to system call.
