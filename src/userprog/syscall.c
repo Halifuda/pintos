@@ -373,6 +373,26 @@ static bool syscall_create(struct intr_frame *f)
     lock_release(&filesys_lock);
     free(file_name_kernel);
     return res;
+} 
+/* Handle REMOVE syscall.
+    Copy the file name and call filesys_remove().
+    Any error will cause a false return value. Otherwise true. */
+static bool syscall_remove(struct intr_frame *f) 
+{
+    int cper;
+    char *file_name_kernel = copy_user_str((char **)f->esp + 1, &cper);
+    if (cper > 0) 
+    {
+        if (cper < 3) syscall_exit(f, -1);
+        return false;
+    }
+
+    lock_acquire(&filesys_lock);
+    bool res = filesys_remove(file_name_kernel);
+    lock_release(&filesys_lock);
+
+    free(file_name_kernel);
+    return res;
 }
 
 /* Handle OPEN syscall, return a fd.
@@ -688,7 +708,14 @@ syscall_handler (struct intr_frame *f)
             set_read_errno(old_r_errno);
             set_write_errno(old_w_errno);
             return;
-            
+
+        case SYS_REMOVE:
+            res = syscall_remove(f);
+            f->eax = res;
+            set_read_errno(old_r_errno);
+            set_write_errno(old_w_errno);
+            return;
+
         case SYS_OPEN:
             res = syscall_open(f);
             f->eax = res;
