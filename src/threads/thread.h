@@ -4,6 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "threads/thread-fd.h"
 
 /** States in a thread's life cycle. */
 enum thread_status
@@ -98,6 +99,7 @@ struct thread
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /**< Page directory. */
+    struct fd_vector fdvector;
 #endif
 
     /* Owned by thread.c. */
@@ -150,5 +152,7 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+
+void check_first_fd(void);
 
 #endif /**< threads/thread.h */

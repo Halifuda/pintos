@@ -8,6 +8,7 @@
 #include "threads/vaddr.h"
 #include "threads/palloc.h"
 #include "userprog/process.h"
+#include "threads/thread-fd.h"
 
 static void syscall_handler (struct intr_frame *);
 
@@ -169,9 +170,9 @@ static int user_strlen(const uint8_t *uaddr)
     return size;
 }
 
-/* copy user space until meet a '\0'. Return the copied size.  
+/* read user space until meet a '\0'. Return the copied size.  
    -1 if any error occured. */
-static int copy_user_str(const uint8_t *uaddr, char *dst, int size) 
+static int read_user_str(const uint8_t *uaddr, char *dst, int size) 
 {
     set_read_errno(READ_NO_ERROR);
     if (dst == NULL) {
@@ -189,6 +190,51 @@ static int copy_user_str(const uint8_t *uaddr, char *dst, int size)
         }
     }
     return size;
+}
+
+/* Copy a user string on uaddr, but pass the pointer to uaddr. 
+   Any error will cause a NULL return value, and the error reason 
+   will be saved in error_status.
+   0: no error. 
+   1: read uaddr error.
+   2: read strlen error. 
+   3: malloc error. 
+   4: copy error. */
+static char *copy_user_str(const uint8_t *uaddrptr, int *error_status)
+{
+    *error_status = 0;
+    char *str_user = (char *)read_user_int(uaddrptr);
+    enum read_error_number no = get_read_errno();
+    if (no != READ_NO_ERROR) 
+    {
+        *error_status = 1;
+        return NULL;
+    }
+    /* copy user string on kernel here. */
+    /* get strlen.
+       Do not need to check errno for -1 return value is sufficient. */
+    int len = user_strlen(str_user);
+    if (len == -1) 
+    {
+        *error_status = 2;
+        return NULL;
+    }
+    /* Copy cmd_line to kernel.
+       Do not need to check errno for -1 return value is sufficient. */
+    char *str_kernel = (char *)malloc(len * sizeof(char) + 1);
+    if (str_kernel == NULL) 
+    {
+        *error_status = 3;
+        return NULL;
+    }
+    int size = read_user_str(str_user, str_kernel, len);
+    if (size == -1) {
+        /* copy failure need to be handled with free. */
+        *error_status = 4;
+        free(str_kernel);
+        return NULL;
+    }
+    return str_kernel;
 }
 
 /* Write n bytes to user memory. Return cont that remaining not writen. 
@@ -302,27 +348,11 @@ static int syscall_exec_handler(char *cmd_line)
    ptr to process_execute(). Thus we need check and copy in this function. */
 static int syscall_exec(struct intr_frame *f) 
 {
-    char *cmd_line_user = (char *)read_user_int((char **)f->esp + 1);
-    enum read_error_number no = get_read_errno();
-    if (no != READ_NO_ERROR) 
+    int cper;
+    char *cmd_line_kernel = copy_user_str((char **)f->esp + 1, &cper);
+    if(cper > 0)
     {
-        syscall_exit(f, -1);
-        return -1;
-    }
-    /* copy user string on kernel here. */
-    /* get strlen. 
-       Do not need to check errno for -1 return value is sufficient. */
-    int len = user_strlen(cmd_line_user);
-    if (len == -1) return -1;
-    /* Copy cmd_line to kernel.
-       Do not need to check errno for -1 return value is sufficient. */
-    char *cmd_line_kernel = (char *)malloc(len * sizeof(char) + 1);
-    if (cmd_line_kernel == NULL) return -1;
-    int size = copy_user_str(cmd_line_user, cmd_line_kernel, len);
-    if(size == -1)
-    { 
-        /* copy failure need to be handled with free. */
-        free(cmd_line_kernel);
+        if (cper == 1) syscall_exit(f, -1);
         return -1;
     }
     int res = syscall_exec_handler(cmd_line_kernel);
@@ -339,6 +369,74 @@ static int syscall_wait(struct intr_frame *f)
     if (no != READ_NO_ERROR) return -1;
     int res = process_wait(child_pid);
     return res;
+}
+
+/* Handle CREATE syscall. 
+   Copy the file name and call filesys_create(). 
+   Any error will cause a false return value. Otherwise true. */
+static bool syscall_create(struct intr_frame *f) 
+{
+    int cper;
+    char *file_name_kernel = copy_user_str((char **)f->esp + 1, &cper);
+    if (cper > 0) 
+    {
+        if (cper == 1) syscall_exit(f, -1);
+        return false;
+    }
+
+    unsigned init_size = (unsigned)read_user_int((unsigned *)f->esp + 2);
+    enum read_error_number no = get_read_errno();
+    if(no != READ_NO_ERROR)
+    {
+        syscall_exit(f, -1);
+        return false;
+    }
+    
+    lock_acquire(&filesys_lock);
+    bool res = filesys_create(file_name_kernel, init_size);
+    lock_release(&filesys_lock);
+    free(file_name_kernel);
+    return res;
+}
+
+static int syscall_open(struct intr_frame *f) 
+{ 
+#ifndef USERPROG
+    return -1;
+#endif
+    int cper;
+    char *file_name_kernel = copy_user_str((char **)f->esp + 1, &cper);
+    if(cper > 0)
+    {
+        /* open should exit(-1) when read a bad file. */
+        if (cper < 3) syscall_exit(f, -1);
+        return -1;
+    }
+    check_first_fd();
+    struct file_descriptor *fd = fdalloc(&thread_current()->fdvector, FD_OC | FD_R | FD_W);
+    if (fd == NULL) return -1;
+    struct file *file = filesys_open(file_name_kernel);
+    if(file == NULL)
+    {
+        fdfree(&thread_current()->fdvector, fd->fd);
+        return -1;
+    }
+    fd_associate(fd, file);
+    fd_open(fd, FD_OC | FD_R | FD_W);
+    return fd->fd;
+}
+
+static void syscall_close(struct intr_frame *f)
+{
+#ifndef USERPROG
+    return -1;
+#endif
+    int fdid = (int)read_user_int((int *)f->esp + 1);
+    enum read_error_number no = get_read_errno();
+    if (no != READ_NO_ERROR) return;
+    check_first_fd();
+    struct file_descriptor *fd = get_fd_ptr(&thread_current()->fdvector, fdid);
+    fd_close(fd);
 }
 
 /* Handler to system call.
@@ -385,7 +483,24 @@ syscall_handler (struct intr_frame *f)
             set_read_errno(old_errno);
             return;
 
-        case SYS_WRITE:
+        case SYS_CREATE:
+            res = syscall_create(f);
+            f->eax = res;
+            set_read_errno(old_errno);
+            return;
+            
+        case SYS_OPEN:
+            res = syscall_open(f);
+            f->eax = res;
+            set_read_errno(old_errno);
+            return;
+
+        case SYS_CLOSE:
+            syscall_close(f);
+            set_read_errno(old_errno);
+            return;
+
+        case SYS_WRITE: 
             res = syscall_write(f);
             f->eax = res;
             set_read_errno(old_errno);
