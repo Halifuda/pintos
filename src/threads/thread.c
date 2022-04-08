@@ -183,12 +183,16 @@ thread_create (const char *name, int priority,
   /* Initialize thread. */
   init_thread (t, name, priority);
   tid = t->tid = allocate_tid ();
+  /* Set parent. */
   t->paid = thread_current()->tid;
+  /* Set child_passport. */
   struct child_passport *cp =
       (struct child_passport *)malloc(sizeof(struct child_passport));
+  cp->child = t;
   cp->tid = t->tid;
   cp->exit_id = 0;
   cp->exited = false;
+  cp->loaded = false;
   list_push_back(&thread_current()->childlist, &cp->elem);
   t->chl_elem = &cp->elem;
 
@@ -300,7 +304,20 @@ thread_exit (void)
      when it calls thread_schedule_tail(). */
   intr_disable ();
   list_remove (&thread_current()->allelem);
-  thread_current ()->status = THREAD_DYING;
+  struct list_elem *e, *n;
+  /* Free all the child_passport saved in this thread. */
+  for (e = list_begin(&thread_current()->childlist); 
+       e != list_end(&thread_current()->childlist); e = n)
+  {
+      n = list_next(e);
+      list_remove(e);
+      struct child_passport *cp = list_entry(e, struct child_passport, elem);
+      cp->child->chl_elem = NULL;
+      cp->child->paid = -1;
+      free(cp);
+
+  }
+  thread_current()->status = THREAD_DYING;
   schedule ();
   NOT_REACHED ();
 }

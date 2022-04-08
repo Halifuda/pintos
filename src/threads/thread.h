@@ -107,9 +107,11 @@ struct thread
 /** A record in parent's childlist. */
 struct child_passport
 {
-    tid_t tid;             /**< child tid. */
+    struct thread *child;  /**< child pointer. */
+    int tid;               /**< cild tid. */
     int exit_id;           /**< exit_id(if really exited). */
-    bool exited;           /**< if exited. */
+    bool loaded;           /**< if the process really loaded. */
+    bool exited;           /**< if the process exited by syscall. */
     struct list_elem elem; /**< list element. */
 };
 

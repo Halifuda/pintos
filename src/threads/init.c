@@ -342,8 +342,6 @@ static void run_task(char **argv) {
     printf("Executing '%s':\n", task);
 #ifdef USERPROG
     int exid = process_wait(process_execute(task));
-    /* print exit status. */
-    printf("%s: exit(%d)\n", task, exid);
 #else
     run_test(task);
 #endif

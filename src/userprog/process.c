@@ -17,6 +17,7 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "threads/synch.h"
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -33,7 +34,7 @@ process_execute (const char *file_args)
 
   char *argsptr = file_args;
   /* check if arguments size exceed page size. */
-  if (strlen(file_args) + 4 >= PGSIZE) return TID_ERROR;
+  if (strlen(file_args) + 8 >= PGSIZE) return TID_ERROR;
 
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
@@ -49,22 +50,31 @@ process_execute (const char *file_args)
   {
       int len = strlen(token) + 1;
       ++argc;
-      strlcpy(fn_copy + slen + 4, token, len);
+      strlcpy(fn_copy + slen + 8, token, len);
       slen += len;
   }
-  *(int *)fn_copy = argc;
-  char *file_name = fn_copy + 4;
+  *(int *)(fn_copy + 4) = argc;
+  char *file_name = fn_copy + 8;
   /* check if the user stack page could contain these arguments. */
   if (slen + argc * 4 + 16 + (4 - slen % 4) % 4 >= PGSIZE)
   {
       palloc_free_page(fn_copy);
       return TID_ERROR;
   }
-
+  /* make a semaphore for child to remind parent that a load operation
+     has completed, whether succeeded of failed. */
+  struct semaphore *load_sema =
+      (struct semaphore *)malloc(sizeof(struct semaphore));
+  sema_init(load_sema, 0);
+  *(struct semaphore **)fn_copy = load_sema;
   /* Create a new thread to execute FILE_ARGS. */
   tid = thread_create(file_name, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
-    palloc_free_page (fn_copy); 
+    palloc_free_page (fn_copy);
+  else
+    sema_down(load_sema);
+
+  free(load_sema);
   return tid;
 }
 
@@ -77,9 +87,10 @@ start_process (void *file_args_)
   struct intr_frame if_;
   bool success;
 
-  /* parsing argc from file_args. */
-  int argc = *(int *)file_args;
-  file_args += 4;
+  /* parsing args from file_args. */
+  struct semaphore *load_sema = *(struct semaphore **)file_args;
+  int argc = *(int *)(file_args + 4);
+  file_args += 8;
 
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
@@ -87,6 +98,15 @@ start_process (void *file_args_)
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (file_args, &if_.eip, &if_.esp);
+  /* remind parent that load has finished, whether result. */
+  sema_up(load_sema);
+  /* If load failed, quit. */
+  if (!success) thread_exit();
+
+  /* If load succeeded, set the child_passport load flag. */
+  struct child_passport *cp =
+      list_entry(thread_current()->chl_elem, struct child_passport, elem);
+  cp->loaded = true;
 
   /* copying arguments onto stack, where argv[0] on the very top an so on. */
   char *token = file_args;
@@ -125,11 +145,8 @@ start_process (void *file_args_)
   /* simulate a return address. */
   if_.esp = (int *)if_.esp - 1;
 
-  /* If load failed, quit. */
-      palloc_free_page(file_args - 4); 
-      // need -4 because file_args should be the 0x0 of a page.
-  if (!success) 
-    thread_exit ();
+  palloc_free_page(file_args - 8); 
+  // need -8 because file_args should be the 0x0 of a page.
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -161,14 +178,14 @@ int process_wait(tid_t child_tid)
     enum intr_level old_level = intr_disable();
     thread_foreach(find_thread, (void *)&fa);
     intr_set_level(old_level);
-    /* no child or dead or not a child of this process. */
-    if (fa.tptr == NULL || fa.tptr->status == THREAD_DYING
-    || fa.tptr->paid != thread_current()->tid) return -1;
+    /* not a child of this process. */
+    if (fa.tptr != NULL && fa.tptr->paid != thread_current()->tid) return -1;
+
     /* find the child passport. */
     struct list *chl = &thread_current()->childlist;
     struct list_elem *e;
     struct child_passport *cp = NULL;
-    for (e = list_begin(chl); e != list_end(chl);e=e->next)
+    for (e = list_begin(chl); e != list_end(chl); e=e->next)
     {
         cp = list_entry(e, struct child_passport, elem);
         if (cp->tid != child_tid) cp = NULL;
@@ -177,20 +194,64 @@ int process_wait(tid_t child_tid)
     }
     /* no child passport. */
     if (cp == NULL) return -1;
+
+    /* call WAIT after child exited. */
+    if(fa.tptr == NULL && cp != NULL)
+    {
+        int res = -1;
+        if (cp->exited == true) res = cp->exit_id; 
+        /* The first time call process_wait(), remove the
+           child_passport. cp is allocated in thread_create(), so wo need free(). */
+        list_remove(&cp->elem);
+        free(cp);
+        return res;
+    }
     /* waiting int a infinite loop. */
-    while (fa.tptr->status >= 0 && fa.tptr->status < 3) {
+    while (fa.tptr->status >= 0 && fa.tptr->status < 3) 
+    {
         /* couldn't understand why need 2 loops,
          * but loop belows may break when the condition still remains TRUE.
          */
         while (fa.tptr->status == THREAD_READY ||
-               fa.tptr->status == THREAD_BLOCKED) {
+               fa.tptr->status == THREAD_BLOCKED) 
+        {
             thread_yield();
         }
     }
     /* child haven't exited. */
     if (cp->exited == false) return -1;
-    return cp->exit_id;
+    int res = cp->exit_id;
+    /* The first time call process_wait(), remove the child_passport. 
+       cp is allocated in thread_create(), so wo need free(). */
+    list_remove(&cp->elem);
+    free(cp);
+    return res;
 }
+
+/* Check if child thread successfully loaded. 
+   return 0 if not and 1 if successed. -1 if any other error occured. 
+   This should call only when process_execute() has returned.
+   At that time, the load is surely happened. */
+int process_check_load(tid_t child_tid)
+{
+    /* ERROR tid. */
+    if (child_tid == -1) return -1;
+    /* find the child passport. */
+    struct list *chl = &thread_current()->childlist;
+    struct list_elem *e;
+    struct child_passport *cp = NULL;
+    for (e = list_begin(chl); e != list_end(chl); e = e->next) {
+        cp = list_entry(e, struct child_passport, elem);
+        if (cp->tid != child_tid)
+            cp = NULL;
+        else
+            break;
+    }
+    /* no child passport. */
+    if (cp == NULL) return -1;
+    return cp->loaded;
+}
+
 
 /** Free the current process's resources. */
 void

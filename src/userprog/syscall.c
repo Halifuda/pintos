@@ -6,6 +6,7 @@
 #include "threads/malloc.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "userprog/process.h"
 
 static void syscall_handler (struct intr_frame *);
 
@@ -26,6 +27,8 @@ static enum write_error_number {
     WRITE_ACTUAL_ERROR /**< error during actual read. */
 } write_errno;
 static struct lock write_errno_lock; /**< lock for write_errno. */
+
+static struct lock filesys_lock; /**< lock for operating file system. */
 
 /* Acquire lock and set read error number. */
 static void set_read_errno(enum read_error_number no) 
@@ -66,6 +69,7 @@ syscall_init (void)
 {
     lock_init(&read_errno_lock);
     lock_init(&write_errno_lock);
+    lock_init(&filesys_lock);
     intr_register_int(0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
 
@@ -140,6 +144,34 @@ static int read_user_int(const uint8_t *uaddr)
     return res;
 }
 
+/* Get a user strlen. 
+   -1 if any error occured. */
+static int user_strlen(const uint8_t *uaddr)
+{
+    int size = 0;
+    char byte = 0;
+    do {
+        byte = get_user(uaddr + size);
+        if (byte == -1) return -1;
+        ++size;
+    } while (byte != '\0');
+    return size;
+}
+
+/* copy user space until meet a '\0'. Return the copied size.  
+   -1 if any error occured. */
+static int copy_user_str(const uint8_t *uaddr, char *dst, int size) 
+{
+    if (dst == NULL) return 0;
+    char byte = 0;
+    for (int i = 0; i < size; ++i)
+    {
+        dst[i] = get_user(uaddr + i);
+        if (dst[i] == -1) return -1;
+    }
+    return size;
+}
+
 /* Write n bytes to user memory. Return cont that remaining not writen. 
    -1 if error occured. 
    Will indirectly acquire write lock. */
@@ -196,11 +228,21 @@ static void syscall_exit(struct intr_frame *f, int caller)
     /* read exit status. read error will cause -1. */
     int exid = caller;
     if (exid == 0) exid = read_user_int(((uint8_t *)f->esp + 4));
-    /* modify child_passport information. */
-    struct child_passport *pp = 
-      list_entry(thread_current()->chl_elem, struct child_passport, elem);
-    pp->exit_id = exid;
-    pp->exited = true;
+    /* if child_passport doesn't exit, means parent has exited, remove self resouce. */
+    if(thread_current()->chl_elem == NULL && thread_current()->paid == -1)
+    {
+        /* free any resource. */
+    }
+    else 
+    {
+        /* modify child_passport information. */
+        struct child_passport *pp = 
+            list_entry(thread_current()->chl_elem, struct child_passport, elem);
+        pp->exit_id = exid;
+        pp->exited = true;
+    }
+    /* print exit status. */
+    printf("%s: exit(%d)\n", thread_current()->name, exid);
     /* exit. */
     thread_exit();
 }
@@ -225,6 +267,57 @@ static int syscall_write(struct intr_frame *f)
     return size;
 }
 
+/* The real interface that call process_execute(). */
+static int syscall_exec_handler(char *cmd_line)
+{
+    lock_acquire(&filesys_lock);
+    int ctid = process_execute(cmd_line);
+    lock_release(&filesys_lock);
+    if (!process_check_load(ctid)) return -1;
+    return ctid;
+}
+
+/* Do the many prepare work for call to process_execute() in a EXEC syscall.
+   NOTE: passed ptr may be bad, but process_execute() do not check bad ptr.
+   This is because the bad ptr is on user memory but we hope to pass kernel
+   ptr to process_execute(). Thus we need check and copy in this function. */
+static int syscall_exec(struct intr_frame *f) 
+{
+    char *cmd_line_user = (char *)read_user_int((char **)f->esp + 1);
+    enum read_error_number no = get_read_errno();
+    if (no != READ_NO_ERROR) 
+    {
+        syscall_exit(f, -1);
+        return -1;
+    }
+    /* copy user string on kernel here. */
+    /* get strlen. */
+    int len = user_strlen(cmd_line_user);
+    if (len == -1) return -1;
+    char *cmd_line_kernel = (char *)malloc(len * sizeof(char) + 1);
+    if (cmd_line_kernel == NULL) return -1;
+    int size = copy_user_str(cmd_line_user, cmd_line_kernel, len);
+    if(size == -1)
+    { 
+        /* copy failure need to be handled with free. */
+        free(cmd_line_kernel);
+        return -1;
+    }
+    int res = syscall_exec_handler(cmd_line_kernel);
+    /* after process_execute(), call free. */
+    free(cmd_line_kernel);
+    return res;
+}
+
+static int syscall_wait(struct intr_frame *f)
+{
+    int child_pid = (int)read_user_int((int *)f->esp + 1);
+    enum read_error_number no = get_read_errno();
+    if (no != READ_NO_ERROR) return -1;
+    int res = process_wait(child_pid);
+    return res;
+}
+
 /* Handler to system call.
    Will indirectly acquire read lock. */
 static void
@@ -240,24 +333,41 @@ syscall_handler (struct intr_frame *f)
     {
         /* When failed to read syscall arguments, process should have return in
          * -1. */
-        syscall_exit(f, -1);
         set_read_errno(old_errno);
+        syscall_exit(f, -1);
+        return;
     }
     int res = 0; /* possible return value. */
-    switch (syscall_num) {
+    switch (syscall_num) 
+    {
         case SYS_HALT:
             set_read_errno(old_errno);
             syscall_halt(f);
             return; // UN_REACHED
+
         case SYS_EXIT:
             syscall_exit(f, 0);
             set_read_errno(old_errno);
             return;
+
+        case SYS_EXEC:
+            res = syscall_exec(f);
+            f->eax = res;
+            set_read_errno(old_errno);
+            return;
+        
+        case SYS_WAIT:
+            res = syscall_wait(f);
+            f->eax = res;
+            set_read_errno(old_errno);
+            return;
+
         case SYS_WRITE:
             res = syscall_write(f);
             f->eax = res;
             set_read_errno(old_errno);
             return;
+
         default:
             break;
   }
