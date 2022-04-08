@@ -262,7 +262,6 @@ static int write_user(uint8_t *udst, const uint8_t *buffer, unsigned size)
     {
         flag = put_user(ptr, buffer[n]);
         if (flag == false) break;
-        if (buffer[n] == '\r') --ptr;
         ++n;
         ++ptr;
     } while (n < size);
