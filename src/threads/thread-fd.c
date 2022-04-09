@@ -1,5 +1,6 @@
 #include "threads/thread-fd.h"
 #include "threads/synch.h"
+#include "threads/malloc.h"
 #include "userprog/syscall.h"
 
 /* Initialize a fd invalid. */
@@ -62,9 +63,9 @@ int fd_close(struct file_descriptor *fd)
 /* Find a fd struct pointer by fd id. */
 struct file_descriptor *get_fd_ptr(struct fd_vector *vec, int fdid)
 {
-    if (vec == NULL) return NULL;
+    if (vec == NULL || fdid < 0) return NULL;
     struct file_descriptor *fd = NULL;
-    if(fdid >= vec->size) return NULL;
+    if((unsigned)fdid >= vec->size) return NULL;
     fd = &vec->fdvec[fdid];
     return fd;
 }
@@ -78,7 +79,7 @@ void fd_vec_init(struct fd_vector *vec, int tid)
         FDV_SIZE * sizeof(struct file_descriptor));
     vec->size = 8;
     vec->tid = tid;
-    for (int i = 0; i < vec->size; ++i) fd_init(&vec->fdvec[i], i);
+    for (unsigned i = 0; i < vec->size; ++i) fd_init(&vec->fdvec[i], i);
     fd_associate(&vec->fdvec[0], NULL);
     set_fd_right(&vec->fdvec[0], FD_R | FD_V);
     fd_associate(&vec->fdvec[1], NULL);
@@ -91,7 +92,7 @@ void fd_vec_init(struct fd_vector *vec, int tid)
 void fd_vec_closeall(struct fd_vector *vec) 
 {
     if (vec->fdvec == NULL) return;
-    for (int i = 2; i <= vec->max_valid;++i)
+    for (unsigned i = 2; i <= vec->max_valid; ++i)
         if(get_fd_valid(&vec->fdvec[i])) fd_close(&vec->fdvec[i]);
 }
 
@@ -100,7 +101,7 @@ void fd_vec_free(struct fd_vector *vec)
 {
     if (vec->fdvec == NULL) return;
     fd_vec_closeall(vec);
-    for (int i = 0; i <= vec->max_valid; ++i) fd_deassociate(&vec->fdvec[i]);
+    for (unsigned i = 0; i <= vec->max_valid; ++i) fd_deassociate(&vec->fdvec[i]);
     free(vec->fdvec);
 }
 
@@ -110,13 +111,13 @@ static bool fd_vec_extend(struct fd_vector *vec)
     struct file_descriptor *newvec = (struct file_descriptor *)malloc(
         2 * vec->size * sizeof(struct file_descriptor));
     if (newvec == NULL) return false;
-    for (int i = 0; i < vec->size; ++i)
+    for (unsigned i = 0; i < vec->size; ++i)
     {
         newvec[i].fd = i;
         newvec[i].file = vec->fdvec[i].file;
         newvec[i].right = vec->fdvec[i].right;
     }
-    for (int i = vec->size; i < 2 * vec->size; ++i) fd_init(&newvec[i], i);
+    for (unsigned i = vec->size; i < 2 * vec->size; ++i) fd_init(&newvec[i], i);
     free(vec->fdvec);
     vec->fdvec = newvec;
     return true;
@@ -129,7 +130,7 @@ struct file_descriptor *fdalloc(struct fd_vector *vec, int right)
     {
         if (!fd_vec_extend(vec)) return NULL;
     }
-    int i = 0; /**< allocate place id. */
+    unsigned i = 0; /**< allocate place id. */
     if (vec->max_valid + 1 == vec->valid_cnt) i = ++vec->max_valid;
     else
     {
@@ -147,10 +148,11 @@ struct file_descriptor *fdalloc(struct fd_vector *vec, int right)
 /* Free a fd from a given fd vector. */
 void fdfree(struct fd_vector *vec, int fd)
 {
-    if (fd > vec->max_valid) return;
+    if (fd < 0) return;
+    if ((unsigned)fd > vec->max_valid) return;
     vec->valid_cnt--;
     clear_fd_right(&vec->fdvec[fd]);
-    if(fd==vec->max_valid)
+    if((unsigned)fd == vec->max_valid)
     {
         while (!get_fd_valid(&vec->fdvec[vec->max_valid])) vec->max_valid--;
     }

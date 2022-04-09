@@ -15,6 +15,7 @@
 #include "threads/init.h"
 #include "threads/interrupt.h"
 #include "threads/palloc.h"
+#include "threads/malloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "threads/synch.h"
@@ -27,12 +28,11 @@ static bool load (const char *cmdline, void (**eip) (void), void **esp);
    before process_execute() returns.  Returns the new process's
    thread id, or TID_ERROR if the thread cannot be created. */
 tid_t
-process_execute (const char *file_args) 
+process_execute (char *file_args) 
 {
   char *fn_copy;
   tid_t tid;
 
-  char *argsptr = file_args;
   /* check if arguments size exceed page size. */
   if (strlen(file_args) + 8 >= PGSIZE) return TID_ERROR;
 
@@ -45,7 +45,7 @@ process_execute (const char *file_args)
   /* parsing arguments into separated strings. */
   char *token = fn_copy, *save_ptr;
   int argc = 0, slen = 0;
-  for (token = strtok_r(argsptr, " ", &save_ptr); token != NULL;
+  for (token = strtok_r(file_args, " ", &save_ptr); token != NULL;
         token = strtok_r(NULL, " ", &save_ptr)) 
   {
       int len = strlen(token) + 1;
@@ -138,7 +138,7 @@ start_process (void *file_args_)
   } 
   /* puting argv on stack. */
   if_.esp = (char **)if_.esp - 1;
-  *(char **)if_.esp = ((char **)if_.esp + 1);
+  *(int *)if_.esp = (int)((char **)if_.esp + 1);
   /* puting argc on stack. */
   if_.esp = (int *)if_.esp - 1;
   *(int *)if_.esp = argc;

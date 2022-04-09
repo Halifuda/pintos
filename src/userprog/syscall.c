@@ -10,6 +10,7 @@
 #include "userprog/process.h"
 #include "threads/thread-fd.h"
 #include "devices/input.h"
+#include "devices/shutdown.h"
 
 static void syscall_handler (struct intr_frame *);
 
@@ -109,7 +110,7 @@ static int read_user(const uint8_t *uaddr, uint8_t *buffer, unsigned size)
         set_read_errno(READ_NULL_BUFFER);
         return -1;
     }
-    if (uaddr + size > PHYS_BASE)  // overflow user space
+    if (uaddr + size > (uint8_t *)PHYS_BASE)  // overflow user space
     {
         set_read_errno(READ_OVERFLOW);
         return -1;
@@ -117,12 +118,10 @@ static int read_user(const uint8_t *uaddr, uint8_t *buffer, unsigned size)
     /* start read. */
     unsigned n = 0;
     int bytebuf = 0;
-    uint8_t *ptr = uaddr;
     do{
-        bytebuf = get_user(ptr);
+        bytebuf = get_user(uaddr + n);
         if (bytebuf < 0) break;
         buffer[n++] = bytebuf;
-        ++ptr;
     } while (n < size); /* trust the caller to ensure the buffer is sufficient. */
     if (bytebuf < 0)    // actual read error
     {
@@ -137,7 +136,7 @@ static int read_user(const uint8_t *uaddr, uint8_t *buffer, unsigned size)
 static int read_user_int(const uint8_t *uaddr)
 {
     int *buffer = (int *)malloc(sizeof(int));
-    int n = read_user(uaddr, buffer, sizeof(int));
+    read_user(uaddr, (uint8_t *)buffer, sizeof(int));
     int res = -1;
     enum read_error_number no = get_read_errno();
     if (no == READ_NO_ERROR) res = *buffer;
@@ -178,7 +177,6 @@ static int read_user_str(const uint8_t *uaddr, char *dst, int size)
         set_read_errno(READ_NULL_BUFFER);
         return 0;
     }
-    char byte = 0;
     for (int i = 0; i < size; ++i)
     {
         dst[i] = get_user(uaddr + i);
@@ -202,7 +200,7 @@ static int read_user_str(const uint8_t *uaddr, char *dst, int size)
 static char *copy_user_str(const uint8_t *uaddrptr, int *error_status)
 {
     *error_status = 0;
-    char *str_user = (char *)read_user_int(uaddrptr);
+    const uint8_t *str_user = (uint8_t *)read_user_int(uaddrptr);
     enum read_error_number no = get_read_errno();
     if (no != READ_NO_ERROR) 
     {
@@ -249,7 +247,7 @@ static int write_user(uint8_t *udst, const uint8_t *buffer, unsigned size)
         set_write_errno(WRITE_NULL_BUFFER);
         return -1;
     }
-    if (udst + size > PHYS_BASE)  // overflow user space
+    if (udst + size > (uint8_t *)PHYS_BASE)  // overflow user space
     {
         set_write_errno(WRITE_OVERFLOW);
         return -1;
@@ -274,7 +272,7 @@ static int write_user(uint8_t *udst, const uint8_t *buffer, unsigned size)
 }
 
 /* Handle syscall HALT. Simply call shutdown_power_off(). */
-static void syscall_halt(struct intr_frame *f)
+static void syscall_halt(struct intr_frame *f UNUSED)
 {
     shutdown_power_off();
 }
@@ -324,7 +322,7 @@ static int syscall_exec_handler(char *cmd_line)
 static int syscall_exec(struct intr_frame *f) 
 {
     int cper;
-    char *cmd_line_kernel = copy_user_str((char **)f->esp + 1, &cper);
+    char *cmd_line_kernel = copy_user_str((const uint8_t *)f->esp + 4, &cper);
     if(cper > 0)
     {
         if (cper < 3) syscall_exit(f, -1);
@@ -339,7 +337,7 @@ static int syscall_exec(struct intr_frame *f)
 /* Handle WAIT syscall. just call process_wait(). */
 static int syscall_wait(struct intr_frame *f)
 {
-    int child_pid = (int)read_user_int((int *)f->esp + 1);
+    int child_pid = (int)read_user_int((const uint8_t *)f->esp + 4);
     enum read_error_number no = get_read_errno();
     if (no != READ_NO_ERROR) return -1;
     int res = process_wait(child_pid);
@@ -352,14 +350,14 @@ static int syscall_wait(struct intr_frame *f)
 static bool syscall_create(struct intr_frame *f) 
 {
     int cper;
-    char *file_name_kernel = copy_user_str((char **)f->esp + 1, &cper);
+    char *file_name_kernel = copy_user_str((const uint8_t *)f->esp + 4, &cper);
     if (cper > 0) 
     {
         if (cper < 3) syscall_exit(f, -1);
         return false;
     }
 
-    unsigned init_size = (unsigned)read_user_int((unsigned *)f->esp + 2);
+    unsigned init_size = (unsigned)read_user_int((const uint8_t *)f->esp + 8);
     enum read_error_number no = get_read_errno();
     if(no != READ_NO_ERROR)
     {
@@ -379,7 +377,7 @@ static bool syscall_create(struct intr_frame *f)
 static bool syscall_remove(struct intr_frame *f) 
 {
     int cper;
-    char *file_name_kernel = copy_user_str((char **)f->esp + 1, &cper);
+    char *file_name_kernel = copy_user_str((const uint8_t *)f->esp + 4, &cper);
     if (cper > 0) 
     {
         if (cper < 3) syscall_exit(f, -1);
@@ -402,7 +400,7 @@ static int syscall_open(struct intr_frame *f)
     return -1;
 #endif
     int cper;
-    char *file_name_kernel = copy_user_str((char **)f->esp + 1, &cper);
+    char *file_name_kernel = copy_user_str((const uint8_t *)f->esp + 4, &cper);
     if(cper > 0)
     {
         /* open should exit(-1) when read a bad file. */
@@ -434,7 +432,7 @@ static void syscall_close(struct intr_frame *f)
 #ifndef USERPROG
     return -1;
 #endif
-    int fdid = (int)read_user_int((int *)f->esp + 1);
+    int fdid = (int)read_user_int((const uint8_t *)f->esp + 4);
     enum read_error_number no = get_read_errno();
     if (no != READ_NO_ERROR) return;
     check_first_fd();
@@ -444,7 +442,7 @@ static void syscall_close(struct intr_frame *f)
 
 static int syscall_filesize(struct intr_frame *f)
 {
-    int fdid = (int)read_user_int((int *)f->esp + 1);
+    int fdid = (int)read_user_int((const uint8_t *)f->esp + 4);
     enum read_error_number no = get_read_errno();
     if (no != READ_NO_ERROR) return -1;
 
@@ -469,9 +467,9 @@ static int syscall_read_stdin(char *buffer, unsigned size)
     }
 
     int n = 0;
-    while(n < size)
+    while((unsigned)n < size)
         stdinbuffer[n++] = input_getc();
-    n = write_user(buffer, stdinbuffer, size);
+    n = write_user((uint8_t *)buffer, (const uint8_t *)stdinbuffer, size);
     free(stdinbuffer);
     if (get_write_errno() != WRITE_NO_ERROR) return -1;
     return n;
@@ -492,7 +490,7 @@ static int syscall_read_fd(struct file_descriptor *fd, char *buffer, unsigned si
     int n = file_read(fd->file, filebuffer, size);
     lock_release(&filesys_lock);
 
-    n -= write_user(buffer, filebuffer, n);
+    n -= write_user((uint8_t *)buffer, (const uint8_t *)filebuffer, n);
     free(filebuffer);
     if (get_write_errno() != WRITE_NO_ERROR) return -1;
     return n;
@@ -506,7 +504,7 @@ static int syscall_read_fd(struct file_descriptor *fd, char *buffer, unsigned si
 static int syscall_read(struct intr_frame *f) 
 {
     uint8_t *arg_buffer = (uint8_t *)malloc(sizeof(uint8_t) * 12);
-    read_user(((uint8_t *)f->esp + 4), arg_buffer, 12);
+    read_user(((const uint8_t *)f->esp + 4), arg_buffer, 12);
     enum read_error_number no = get_read_errno();
     if (no != READ_NO_ERROR) 
     {
@@ -564,7 +562,7 @@ static int syscall_write_fd(struct file_descriptor *fd, const char *buffer, unsi
 static int syscall_write(struct intr_frame *f) 
 {
     uint8_t *arg_buffer = (uint8_t *)malloc(sizeof(uint8_t) * 12);
-    read_user(((uint8_t *)f->esp + 4), arg_buffer, 12);
+    read_user(((const uint8_t *)f->esp + 4), arg_buffer, 12);
     enum read_error_number no = get_read_errno();
     if (no != READ_NO_ERROR) 
     {
@@ -585,7 +583,7 @@ static int syscall_write(struct intr_frame *f)
         return 0;
     }
 
-    read_user(buffer, kernelbuffer, size);
+    read_user((const uint8_t *)buffer, (uint8_t *)kernelbuffer, size);
     if(get_read_errno() != READ_NO_ERROR)
     {
         /* bad copy should terminate process. */
@@ -613,8 +611,8 @@ static int syscall_write(struct intr_frame *f)
 /* Handle SEEK syscall. Simply call file_seek() with prepare work. */
 static void syscall_seek(struct intr_frame *f)
 {
-    int fdid = (int)read_user_int((int *)f->esp + 1);
-    unsigned pos = (unsigned)read_user_int((int *)f->esp + 2);
+    int fdid = (int)read_user_int((const uint8_t *)f->esp + 4);
+    unsigned pos = (unsigned)read_user_int((const uint8_t *)f->esp + 8);
     enum read_error_number no = get_read_errno();
     if (no != READ_NO_ERROR) 
     {
@@ -623,7 +621,7 @@ static void syscall_seek(struct intr_frame *f)
         return;
     }
     struct file_descriptor *fd = get_fd_ptr(&thread_current()->fdvector, fdid);
-    if (fd == NULL || !get_fd_right(fd, FD_R) && !get_fd_right(fd, FD_W) 
+    if (fd == NULL || (!get_fd_right(fd, FD_R) && !get_fd_right(fd, FD_W)) 
         || !fd->opened) return;
     lock_acquire(&filesys_lock);
     file_seek(fd->file, pos);
@@ -633,7 +631,7 @@ static void syscall_seek(struct intr_frame *f)
 
 static unsigned syscall_tell(struct intr_frame *f)
 {
-    int fdid = (int)read_user_int((int *)f->esp + 1);
+    int fdid = (int)read_user_int((const uint8_t *)f->esp + 4);
     enum read_error_number no = get_read_errno();
     if (no != READ_NO_ERROR) {
         /* any bad read int should terminate process. */
@@ -641,8 +639,8 @@ static unsigned syscall_tell(struct intr_frame *f)
         return 0;
     }
     struct file_descriptor *fd = get_fd_ptr(&thread_current()->fdvector, fdid);
-    if (fd == NULL || !get_fd_right(fd, FD_R) && !get_fd_right(fd, FD_W) ||
-        !fd->opened)
+    if (fd == NULL || (!get_fd_right(fd, FD_R) && !get_fd_right(fd, FD_W))
+     ||!fd->opened)
         return 0xffffffff;
 
     lock_acquire(&filesys_lock);
@@ -660,7 +658,7 @@ syscall_handler (struct intr_frame *f)
     enum read_error_number old_r_errno = get_read_errno();
     enum write_error_number old_w_errno = get_write_errno();
 
-    int syscall_num = read_user_int(f->esp);
+    int syscall_num = read_user_int((const uint8_t *)f->esp);
 
     enum read_error_number no = get_read_errno();
     if (no != READ_NO_ERROR) 
@@ -765,7 +763,7 @@ syscall_handler (struct intr_frame *f)
         default:
             break;
   }
-  printf("system call: %d\n", syscall_num);
+  printf("system call!");
   set_read_errno(old_r_errno);
   set_write_errno(old_w_errno);
   thread_exit ();

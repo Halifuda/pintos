@@ -22,8 +22,8 @@ struct fd_vector
 {
     size_t size;                    /**< present size of fdvec. */
     struct file_descriptor *fdvec;  /**< fd vector pointer. */
-    int max_valid;                  /**< the max valid fd number. */
-    int valid_cnt;                  /**< valid fd count. */
+    size_t max_valid;                  /**< the max valid fd number. */
+    size_t valid_cnt;                  /**< valid fd count. */
     int tid;                        /**< tid for thread holding this fd_vector. */
 };
 
@@ -35,11 +35,11 @@ struct fd_vector
 #define FDV_SIZE 8 /* initial size for a fd vector. */
 
 /* macros for operating fd right. */
-#define get_fd_right(FD, RIGHT) ((FD)->right & RIGHT)
-#define add_fd_right(FD, RIGHT) ((FD)->right |= RIGHT)
+#define get_fd_right(FD, RIGHT) ((FD)->right & (RIGHT))
+#define add_fd_right(FD, RIGHT) ((FD)->right |= (RIGHT))
 #define del_fd_right(FD, RIGHT) ((FD)->right &= (~RIGHT))
 #define clear_fd_right(FD) ((FD)->right = 0)
-#define set_fd_right(FD, RIGHT) ((FD)->right = RIGHT)
+#define set_fd_right(FD, RIGHT) ((FD)->right = (RIGHT))
 #define giveall_fd_right(FD) ((FD)->right = -1)
 
 /* macros for operating fd validation. */
