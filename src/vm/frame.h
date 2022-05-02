@@ -1,23 +1,32 @@
 #ifndef VM_FRAME_H
 #define VM_FRAME_H
 
-#include <stddef.h>
-#include <stdbool.h>
-#include <stdint.h>
-#include <list.h>
 #include <debug.h>
+#include <hash.h>
+#include <list.h>
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
 
-struct frame 
-{
+struct frame {
     uint8_t *paddr;
-    struct list_elem elem;
+    struct hash_elem elem;
 };
 
+/* Frame Table interfaces. */
 void frame_table_init(void);
 void *alloc_frame(bool);
 void free_frame(uint8_t *);
 void *reclaim_frame(bool);
-void sign_up_frame(uint8_t *);
-struct frame *find_frame_entry(uint8_t *);
+bool sign_up_frame(uint8_t *);
 
-#endif
+/* Frame Table operations. */
+struct frame *find_frame_entry(uint8_t *);
+void free_fte(struct frame *);
+
+/* Hash Table helper. */
+unsigned frame_hash_func(const struct hash_elem *, void *);
+bool frame_less_func(const struct hash_elem *, const struct hash_elem *,
+                     void *);
+
+#endif /**< vm/frame.h */
