@@ -33,6 +33,7 @@
 #else
 #include "tests/threads/tests.h"
 #endif
+#include "vm/frame.h"
 #ifdef FILESYS
 #include "devices/block.h"
 #include "devices/ide.h"
@@ -101,7 +102,7 @@ int pintos_init(void) {
     palloc_init(user_page_limit);
     malloc_init();
     paging_init();
-
+    frame_table_init();
     /* Segmentation. */
 #ifdef USERPROG
     tss_init();
