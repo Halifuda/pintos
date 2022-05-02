@@ -15,9 +15,9 @@ void *alloc_sup_pd(uint32_t *pagedir)
 }
 
 /* Initialize a supplemental page talbe for a thread. */
-void sup_pd_init(struct sup_pagedir *pd) 
+void sup_pd_init(struct sup_pagedir *spd) 
 { 
-    hash_init(&pd->spthash, spte_hash_func, spte_less_func, NULL); 
+    hash_init(&spd->spthash, spte_hash_func, spte_less_func, (void *)spd); 
 }
 
 /* Help function to free spte in a sup page dir. */
@@ -79,6 +79,7 @@ struct sup_pte *alloc_spte(bool writable)
     struct sup_pte *spte = (struct sup_pte *)malloc(sizeof(struct sup_pte));
     if (spte == NULL) return NULL;
     spte->info = (uint8_t)0;
+    spte->pointer = NULL;
     spte_set_writable(spte, writable ? SPD_RW : SPD_RO);
     return spte;
 }
@@ -105,7 +106,7 @@ static bool spte_set_swap_info(struct sup_pte *);
 bool spte_set_info(struct sup_pte *spte, uint8_t *vpage, uint8_t place, void *dataptr, void *aux1,
                    void *aux2)
 {
-    if (vpage == NULL || is_kernel_vaddr(vpage)) return false;
+    if (spte == NULL || vpage == NULL || is_kernel_vaddr(vpage)) return false;
     spte->vpage = vpage;
     spte_set_place(spte, place);
     if(place == SPD_MEM)
@@ -166,6 +167,7 @@ struct sup_pte *find_spte(struct sup_pagedir *spd, void *vpage)
 /* Sign up the spte to the process's sup pagedir. */
 bool sign_up_spte(struct sup_pte *spte)
 {
+    if (spte == NULL) return false;
     struct sup_pagedir *spd =
         (struct sup_pagedir *)thread_current()->sup_pagedir;
     if (spd == NULL) return false;
@@ -188,16 +190,19 @@ static void free_swap_spte(struct sup_pte *spte UNUSED)
     return; 
 }
 
-/* Free a spte. */
+/* Free a spte and delete it from sup pagedir. */
 void free_spte(struct sup_pte *spte) 
 {
-    if (spte == NULL) return;
+    struct sup_pagedir *spd =
+        (struct sup_pagedir *)thread_current()->sup_pagedir;
+    if (spte == NULL || spd == NULL) return;
     if (spte->pointer != NULL) 
     {
         if (spte_in_memory(spte)) free_memory_spte(spte);
         if (spte_in_swap(spte)) free_swap_spte(spte);
         free(spte->pointer);
     }
+    hash_delete(&spd->spthash, &spte->elem);
     free(spte);
 }
 
