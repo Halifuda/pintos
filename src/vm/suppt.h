@@ -15,7 +15,7 @@
 /* Supplemental Page Table Entry. */
 struct sup_pte 
 {
-    uint8_t *vaddr;         /**< page virtual address. */
+    uint8_t *vpage;         /**< page virtual address. */
     uint8_t info;           /**< recorded infomation bit vector. */
     void *pointer;          /**< pointer to the detailed infomation. */
     struct hash_elem elem;  /**< hash table element. */
@@ -48,15 +48,29 @@ struct sup_pagedir
 void *alloc_sup_pd(uint32_t *);
 void sup_pd_init(struct sup_pagedir *);
 
+/* Sup page table entry infomation interface. */
 
-#define SPD_MEM 0
-#define SPD_FILE 1
-#define SPD_SWAP 2
+/* spte type infomation, using first 2 bits in info. */
+#define SPD_PLACE_MASK 3    /**< 11: place info mask. */
+#define SPD_MEM 0           /**< 00: in memory. */
+#define SPD_FILE 1          /**< 01: in file. */
+#define SPD_SWAP 2          /**< 10: in swap. */
+/* spte right infomation, using 3rd bit in info. */
+#define SPD_WRITE_MASK 4    /**< 1: read write mask. */
+#define SPD_RO 0            /**< 0: read only. */
+#define SPD_RW 4            /**< 1: read write. */
+
+bool spte_can_write(struct sup_pte *);
+bool spte_in_memory(struct sup_pte *);
+bool spte_in_file(struct sup_pte *);
+bool spte_in_swap(struct sup_pte *);
 
 /* Sup page table entry interface. */
 
-struct sup_pte *alloc_spte(void);
+struct sup_pte *alloc_spte(bool);
 bool spte_set_info(struct sup_pte *spte, uint8_t *vaddr, uint8_t info, void *dataptr, void *aux1, void *aux2);
+struct sup_pte *find_spte(struct sup_pagedir *, void *);
+bool sign_up_spte(struct sup_pte *);
 
 /* Hash Table helper. */
 unsigned spte_hash_func(const struct hash_elem *, void *);

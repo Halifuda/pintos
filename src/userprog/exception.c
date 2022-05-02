@@ -5,6 +5,7 @@
 #include "userprog/syscall.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "vm/pagefault.h"
 
 /** Number of page faults processed. */
 static long long page_fault_cnt;
@@ -155,6 +156,24 @@ page_fault (struct intr_frame *f)
     f->eip = (void (*)(void))f->eax;
     f->eax = -1;
     return;
+  }
+
+   /* If page_fault is caused by user, activate supplemental page table to handle it. */
+  else
+  {
+     /* Find the sup-pte. */
+     struct sup_pte *spte = page_fault_get_spte(fault_addr);
+     /* Check if need to load. */
+     if(page_fault_need_load(spte, not_present, write))
+     {
+        /* Load the page from file to a frame. */
+         uint8_t *kpage = page_fault_load_page(spte);
+         if(kpage != NULL) // succeeded
+         {
+            /* Install the page to user's space. */
+             if (page_fault_install_page(spte, kpage)) return;
+         }
+     }
   }
 
   /* To implement virtual memory, delete the rest of the function

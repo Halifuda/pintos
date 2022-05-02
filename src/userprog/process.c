@@ -566,7 +566,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 
       /* Belows are codes to read data from a file to memory. 
          To implement demand paging, we do not need to do this here,
-         but these code will be useful in page_fault().*/
+         but these code will be useful in page_fault(). */
 
 //      /* Get a page of memory. */
 //      uint8_t *kpage = alloc_frame(false);
@@ -590,12 +590,13 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 
       /* Now implementing lazy loading. */
       
-      /* Firstly create a sup-pte for this page, recording the file info. */
-      struct sup_pte *spte = alloc_spte();
+      /* Create a sup-pte for this page, recording the file info. */
+      struct sup_pte *spte = alloc_spte(writable);
       if (spte == NULL) return false;
       if(!spte_set_info(spte, upage, SPD_FILE, file, (void *)&cur_ofs,
-                    (void *)&read_bytes))
+                    (void *)&page_read_bytes))
           return false;
+      if (!sign_up_spte(spte)) return false;
 
       /* Advance. */
       read_bytes -= page_read_bytes;
