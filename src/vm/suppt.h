@@ -53,13 +53,13 @@ void free_sup_pd(struct sup_pagedir *);
 
 /* spte type infomation, using first 2 bits in info. */
 #define SPD_PLACE_MASK 3    /**< 11: place info mask. */
-#define SPD_MEM 0           /**< 00: in memory. */
-#define SPD_FILE 1          /**< 01: in file. */
-#define SPD_SWAP 2          /**< 10: in swap. */
-/* spte right infomation, using 3rd bit in info. */
-#define SPD_WRITE_MASK 4    /**< 1: read write mask. */
-#define SPD_RO 0            /**< 0: read only. */
-#define SPD_RW 4            /**< 1: read write. */
+#define SPD_MEM 1           /**< 01: in memory. */
+#define SPD_FILE 2          /**< 10: in file. */
+#define SPD_SWAP 3          /**< 11: in swap. */
+/* spte right infomation, using 3rd-4th bits in info. */
+#define SPD_WRITE_MASK 12   /**< 1100: read write mask. */
+#define SPD_RO 4            /**< 0100: read only. */
+#define SPD_RW 8            /**< 1000: read write. */
 
 bool spte_can_write(struct sup_pte *);
 bool spte_in_memory(struct sup_pte *);

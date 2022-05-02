@@ -172,6 +172,8 @@ page_fault (struct intr_frame *f)
          {
             /* Install the page to user's space. */
              if (page_fault_install_page(spte, kpage)) return;
+             else
+                 free_frame(kpage);
          }
      }
   }

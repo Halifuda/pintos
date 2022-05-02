@@ -29,6 +29,7 @@ void free_frame(uint8_t *);
 
 struct frame *find_frame_entry(uint8_t *);
 void free_fte(struct frame *);
+void remove_fte(struct frame *);
 
 /* Hash Table helper. */
 

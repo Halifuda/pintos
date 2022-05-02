@@ -113,9 +113,17 @@ struct frame *find_frame_entry(uint8_t *kpage)
 
 /* free a fte, remove it from frame hash table and free the physical page. */
 void free_fte(struct frame *fte) 
-{ 
+{
+    if (fte == NULL) return;
     hash_delete(&frame_hash, &fte->elem);
     if (fte->paddr != NULL) palloc_free_page(fte->paddr);
+}
+
+/* remove a fte from frame table, but do not free the page. */
+void remove_fte(struct frame *fte)
+{
+    if (fte == NULL) return;
+    hash_delete(&frame_hash, &fte->elem);
 }
 
 /* Return the hashed value of a frame table entry. */

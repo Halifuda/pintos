@@ -173,11 +173,31 @@ bool sign_up_spte(struct sup_pte *spte)
     return true;
 }
 
+/* Help function to free a frame held by a spte. */
+static void free_memory_spte(struct sup_pte *spte)
+{
+    struct in_memory_info *info = (struct in_memory_info *)spte->pointer;
+    /* do not free the physical page here, for pagedir_destroy() has already freed it. */
+    remove_fte(info->fte);
+}
+
+/* Help function to free a spte in swap. */
+static void free_swap_spte(struct sup_pte *spte UNUSED) 
+{ 
+    /* Currently do nothing. */
+    return; 
+}
+
 /* Free a spte. */
-void free_spte(struct sup_pte *spte)
+void free_spte(struct sup_pte *spte) 
 {
     if (spte == NULL) return;
-    if (spte->pointer != NULL) free(spte->pointer);
+    if (spte->pointer != NULL) 
+    {
+        if (spte_in_memory(spte)) free_memory_spte(spte);
+        if (spte_in_swap(spte)) free_swap_spte(spte);
+        free(spte->pointer);
+    }
     free(spte);
 }
 
