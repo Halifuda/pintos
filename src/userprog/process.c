@@ -19,7 +19,7 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "threads/synch.h"
-#include "vm/frame.h"
+#include "vm/suppt.h"
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -380,6 +380,8 @@ load (const char *file_name, void (**eip) (void), void **esp)
   t->pagedir = pagedir_create ();
   if (t->pagedir == NULL) 
     goto done;
+  t->sup_pagedir = alloc_sup_pd(t->pagedir);
+  if (t->sup_pagedir == NULL) goto done;
   process_activate ();
 
   /* Open executable file. */
@@ -552,6 +554,8 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   ASSERT (ofs % PGSIZE == 0);
 
   file_seek (file, ofs);
+  size_t cur_ofs = ofs;
+
   while (read_bytes > 0 || zero_bytes > 0) 
     {
       /* Calculate how to fill this page.
@@ -560,29 +564,43 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
-      /* Get a page of memory. */
-      uint8_t *kpage = alloc_frame(false);
-      if (kpage == NULL)
-        return false;
+      /* Belows are codes to read data from a file to memory. 
+         To implement demand paging, we do not need to do this here,
+         but these code will be useful in page_fault().*/
 
-      /* Load this page. */
-      if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
-        {
-          free_frame (kpage);
-          return false; 
-        }
-      memset (kpage + page_read_bytes, 0, page_zero_bytes);
+//      /* Get a page of memory. */
+//      uint8_t *kpage = alloc_frame(false);
+//      if (kpage == NULL)
+//        return false;
 
-      /* Add the page to the process's address space. */
-      if (!install_page (upage, kpage, writable)) 
-        {
-          free_frame (kpage);
-          return false; 
-        }
+//      /* Load this page. */
+//      if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
+//        {
+//          free_frame (kpage);
+//          return false; 
+//        }
+//      memset (kpage + page_read_bytes, 0, page_zero_bytes);
+
+//      /* Add the page to the process's address space. */
+//      if (!install_page (upage, kpage, writable)) 
+//        {
+//          free_frame (kpage);
+//          return false; 
+//        }
+
+      /* Now implementing lazy loading. */
+      
+      /* Firstly create a sup-pte for this page, recording the file info. */
+      struct sup_pte *spte = alloc_spte();
+      if (spte == NULL) return false;
+      if(!spte_set_info(spte, upage, SPD_FILE, file, (void *)&cur_ofs,
+                    (void *)&read_bytes))
+          return false;
 
       /* Advance. */
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
+      cur_ofs += page_read_bytes;
       upage += PGSIZE;
     }
   return true;

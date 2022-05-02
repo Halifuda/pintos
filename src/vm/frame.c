@@ -93,7 +93,7 @@ unsigned frame_hash_func(const struct hash_elem *e, void *aux UNUSED)
     return hash_bytes(&fte->paddr, sizeof(fte->paddr));
 }
 
-/* Return the comparison result of 2 frame table entry. Compared by address. */
+/* Return the comparison result of 2 frame table entries. Compared by address. */
 bool frame_less_func(const struct hash_elem *a, 
                      const struct hash_elem *b,
                      void *aux UNUSED)
