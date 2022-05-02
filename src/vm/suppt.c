@@ -1,6 +1,7 @@
 #include "suppt.h"
 #include "threads/malloc.h"
 #include "threads/thread.h"
+#include "threads/vaddr.h"
 
 /* Allocate a sup-pagedir for a thread. Given the raw pagedir address. */
 void *alloc_sup_pd(uint32_t *pagedir)
@@ -17,6 +18,21 @@ void *alloc_sup_pd(uint32_t *pagedir)
 void sup_pd_init(struct sup_pagedir *pd) 
 { 
     hash_init(&pd->spthash, spte_hash_func, spte_less_func, NULL); 
+}
+
+/* Help function to free spte in a sup page dir. */
+static void free_spte_hash_func(struct hash_elem *e, void *aux UNUSED)
+{
+    struct sup_pte *spte = hash_entry(e, struct sup_pte, elem);
+    free_spte(spte);
+}
+
+/* Free a sup page directory. */
+void free_sup_pd(struct sup_pagedir *spd)
+{
+    if (spd == NULL) return;
+    hash_apply(&spd->spthash, free_spte_hash_func);
+    free(spd);
 }
 
 /* Return if the page referenced by spte is writable. */
@@ -67,7 +83,9 @@ struct sup_pte *alloc_spte(bool writable)
     return spte;
 }
 
+static bool spte_set_memory_info(struct sup_pte *, struct frame *);
 static bool spte_set_file_info(struct sup_pte *, struct file *, size_t, size_t);
+static bool spte_set_swap_info(struct sup_pte *);
 
 /* Set a sup-pte infomation, return true if success, false if failed.
    To call this function, be careful with the passed arguments described below:
@@ -87,12 +105,28 @@ static bool spte_set_file_info(struct sup_pte *, struct file *, size_t, size_t);
 bool spte_set_info(struct sup_pte *spte, uint8_t *vpage, uint8_t place, void *dataptr, void *aux1,
                    void *aux2)
 {
+    if (vpage == NULL || is_kernel_vaddr(vpage)) return false;
     spte->vpage = vpage;
     spte_set_place(spte, place);
+    if(place == SPD_MEM)
+        return spte_set_memory_info(spte, (struct frame *)dataptr);
     if(place == SPD_FILE)
         return spte_set_file_info(spte, (struct file *)dataptr, *(size_t *)aux1,
                                   *(size_t *)aux2);
+    if (place == SPD_SWAP) return spte_set_swap_info(spte);
     return false;
+}
+
+/* Help funciton to set spte infomation if the page is in memory. */
+static bool spte_set_memory_info(struct sup_pte *spte, struct frame *fte)
+{
+    if (spte == NULL || fte == NULL) return false;
+    struct in_memory_info *info =
+        (struct in_memory_info *)malloc(sizeof(struct in_memory_info));
+    if (info == NULL) return false;
+    info->fte = fte;
+    spte->pointer = (void *)info;
+    return true;
 }
 
 /* Help function to set spte infomation if it is a file spte. */
@@ -107,6 +141,13 @@ static bool spte_set_file_info(struct sup_pte *spte, struct file *file, size_t o
     info->read_bytes = read_bytes;
     spte->pointer = (void *)info;
     return true;
+}
+
+/* Help funciton to set spte infomation if it is a swap spte. */
+static bool spte_set_swap_info(struct sup_pte *spte UNUSED) 
+{ 
+    /* Currentli do nothing. */
+    return false; 
 }
 
 /* Find the spte in a sup pagedir by virtual address. Return NULL it there is no such spte. */
@@ -130,6 +171,14 @@ bool sign_up_spte(struct sup_pte *spte)
     if (spd == NULL) return false;
     if (hash_insert(&spd->spthash, &spte->elem) != NULL) return false;
     return true;
+}
+
+/* Free a spte. */
+void free_spte(struct sup_pte *spte)
+{
+    if (spte == NULL) return;
+    if (spte->pointer != NULL) free(spte->pointer);
+    free(spte);
 }
 
 /* Return the hashed value of a sup page table entry. */

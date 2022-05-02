@@ -19,9 +19,11 @@ struct frame
 
 void frame_table_init(void);
 void *alloc_frame(bool);
-void free_frame(uint8_t *);
+struct frame *alloc_frame_struct(bool);
 void *reclaim_frame(bool);
-bool sign_up_frame(uint8_t *);
+struct frame *reclaim_frame_struct(bool);
+struct frame *sign_up_frame(uint8_t *);
+void free_frame(uint8_t *);
 
 /* Frame Table operations. */
 

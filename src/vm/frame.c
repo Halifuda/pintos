@@ -22,17 +22,36 @@ void *alloc_frame(bool zero)
 
     /* If there is no free frame, reclaim a frame. */
     if (kpage == NULL) 
-    {
         return reclaim_frame(zero);
-    }
+
     /* sign up the frame to frame table. */
-    if(!sign_up_frame(kpage))
+    if(sign_up_frame(kpage) == NULL)
     {
         palloc_free_page(kpage);
         return NULL;
     }
 
     return kpage;
+}
+
+/* Allocate a single frame for user. 
+   Same behavior with alloc_frame(), but return a struct pointer. */
+struct frame *alloc_frame_struct(bool zero)
+{
+    int zero_flag = zero == true ? PAL_ZERO : 0;
+    uint8_t *kpage = palloc_get_page(PAL_USER | zero_flag);
+
+    /* If there is no free frame, reclaim a frame. */
+    if (kpage == NULL) 
+        return reclaim_frame_struct(zero);
+    
+    /* sign up the frame to frame table. */
+    struct frame *fte = sign_up_frame(kpage);
+
+    /* If failed to sign up, return NULL. */
+    if(fte == NULL) palloc_free_page(kpage);
+    
+    return fte;
 }
 
 /* Free a frame from the frame table. */
@@ -47,21 +66,35 @@ void free_frame(uint8_t *kpage)
 void *reclaim_frame(bool zero UNUSED) 
 {
     /* currently do nothing. */
+    PANIC("run out of frame.");
+    return NULL;
+}
+
+/* Reclaim a frame by evicting a existing frame.
+   Same behavior with reclaim_frame(), but return a struct pointer. */
+struct frame *reclaim_frame_struct(bool zero UNUSED)
+{
+    /* currently do nothing. */
+    PANIC("run out pf frame. ");
     return NULL;
 }
 
 /* Sign up a frame noted by kernel virtual address to frame table. 
    If any unexpected condition happens, return false. Else true. */
-bool sign_up_frame(uint8_t *kpage) 
+struct frame *sign_up_frame(uint8_t *kpage) 
 {
     /* allocate a new frame table entry in kernel space. */
     struct frame *fte = (struct frame *)malloc(sizeof(struct frame));
-    if (fte == NULL) return false;
+    if (fte == NULL) return NULL;
     fte->paddr = kpage;
     /* insert the frame into frame hash table. */
     /* check if there is no existing frame with the same address. */
-    if (hash_insert(&frame_hash, &fte->elem) != NULL) return false;
-    return true;
+    if (hash_insert(&frame_hash, &fte->elem) != NULL) 
+    {
+        free(fte);
+        return NULL;
+    }
+    return fte;
 }
 
 /* Find a frame entry noted by kernel virtual address in frame table. */

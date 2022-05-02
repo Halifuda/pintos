@@ -43,16 +43,17 @@ static bool load_from_swap(struct sup_pte *spte UNUSED, uint8_t *kpage UNUSED) {
    Return the kernel virtual address. NULL if failed to allocate or load. */
 uint8_t *page_fault_load_page(struct sup_pte *spte) 
 {
-    /* Get a page of memory. */ 
-    uint8_t *kpage = alloc_frame(false);
-    if (kpage == NULL) return NULL;
+    /* Get a frame. */
+    struct frame *fte = alloc_frame_struct(false);
+    if (fte == NULL) return NULL;
+    uint8_t *kpage = fte->paddr;
 
     /* Load the page. */
     if (spte_in_file(spte)) 
     {
         if (!load_from_file(spte, kpage)) 
         {
-            free_frame(kpage);
+            free_fte(fte);
             return NULL;
         }
     }
@@ -60,11 +61,13 @@ uint8_t *page_fault_load_page(struct sup_pte *spte)
     {
         if(!load_from_swap(spte, kpage))
         {
-            free_frame(kpage);
+            free_fte(fte);
             return NULL;
         }
     }
 
+    /* Change the spte to in-memory-spte. */
+    spte_set_info(spte, spte->vpage, SPD_MEM, (void *)fte, NULL, NULL);
     return kpage;
 }
 

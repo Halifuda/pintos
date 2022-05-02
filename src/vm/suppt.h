@@ -47,6 +47,7 @@ struct sup_pagedir
 
 void *alloc_sup_pd(uint32_t *);
 void sup_pd_init(struct sup_pagedir *);
+void free_sup_pd(struct sup_pagedir *);
 
 /* Sup page table entry infomation interface. */
 
@@ -68,9 +69,10 @@ bool spte_in_swap(struct sup_pte *);
 /* Sup page table entry interface. */
 
 struct sup_pte *alloc_spte(bool);
-bool spte_set_info(struct sup_pte *spte, uint8_t *vaddr, uint8_t info, void *dataptr, void *aux1, void *aux2);
+bool spte_set_info(struct sup_pte *spte, uint8_t *vpage, uint8_t place, void *dataptr, void *aux1, void *aux2);
 struct sup_pte *find_spte(struct sup_pagedir *, void *);
 bool sign_up_spte(struct sup_pte *);
+void free_spte(struct sup_pte *);
 
 /* Hash Table helper. */
 unsigned spte_hash_func(const struct hash_elem *, void *);

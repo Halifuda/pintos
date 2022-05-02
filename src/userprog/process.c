@@ -275,6 +275,9 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
+  /* Destroy the current process's supplemental page tabel. */
+    struct sup_pagedir *spd = cur->sup_pagedir;
+    free_sup_pd(spd);
 }
 
 /** Sets up the CPU for running user code in the current
