@@ -1,9 +1,11 @@
-#include "vm/pagefault.h"
+#include "pagefault.h"
+
 #include "threads/thread.h"
 #include "userprog/pagedir.h"
 #include "threads/vaddr.h"
 #include "filesys/file.h"
 #include "userprog/syscall.h"
+#include "swap.h"
 
 /* Find the spte by virtual address in sup pagedir of curent thread. */
 struct sup_pte *page_fault_get_spte(void *vaddr)
@@ -44,7 +46,12 @@ static bool load_from_file(struct sup_pte *spte, uint8_t *kpage)
 }
 
 /* Load a page from swap. */
-static bool load_from_swap(struct sup_pte *spte UNUSED, uint8_t *kpage UNUSED) { return false; }
+static bool load_from_swap(struct sup_pte *spte, uint8_t *kpage) 
+{
+    read_swap(kpage, spte->mem_swap_info->sector_idx, SECCNT);
+    free_swap_page(spte->mem_swap_info->sector_idx);
+    return true;
+}
 
 /* Load a page from file or swap to memory. Allocate a frame by alloc_frame(). 
    Return the kernel virtual address. NULL if failed to allocate or load. */
