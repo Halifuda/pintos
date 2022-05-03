@@ -1,9 +1,11 @@
 #include "suppt.h"
-#include "threads/malloc.h"
-#include "threads/thread.h"
-#include "threads/vaddr.h"
 
 #include <stdio.h>
+
+#include "threads/malloc.h"
+#include "threads/thread.h"
+#include "userprog/pagedir.h"
+#include "threads/vaddr.h"
 
 /* Allocate a sup-pagedir for a thread. Given the raw pagedir address. */
 void *alloc_sup_pd(uint32_t *pagedir)
@@ -219,6 +221,7 @@ void free_spte(struct sup_pte *spte)
         free(spte->file_info);
     }
     hash_delete(&spd->spthash, &spte->elem);
+    pagedir_clear_page(spd->pagedir, spte->vpage);
     free(spte);
 }
 

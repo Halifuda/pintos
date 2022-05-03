@@ -254,6 +254,7 @@ process_exit (void)
   struct thread *cur = thread_current ();
   uint32_t *pd;
 
+  // printf("DEBUG: exit process:%s\n", thread_current()->name);
   // print_debug();
 
   /* print exit status. */
@@ -262,7 +263,12 @@ process_exit (void)
   fd_vec_free(&thread_current()->fdvector);
   if (cur->exec_file != NULL) file_allow_write(cur->exec_file);
   file_close(cur->exec_file);
-  /* Destroy the current process's page directory and switch back
+  
+  /* Destroy the current process's supplemental page tabel. */
+    struct sup_pagedir *spd = cur->sup_pagedir;
+    free_sup_pd(spd);
+
+/* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
   if (pd != NULL) 
@@ -278,9 +284,7 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
-  /* Destroy the current process's supplemental page tabel. */
-    struct sup_pagedir *spd = cur->sup_pagedir;
-    free_sup_pd(spd);
+    
 }
 
 /** Sets up the CPU for running user code in the current
@@ -663,7 +667,6 @@ install_page (void *upage, void *kpage, bool writable)
 
 void print_debug(void)
 {
-    printf("DEBUG: exit process:%s\n", thread_current()->name);
     printf("       pagedir: %p\n", thread_current()->pagedir);
     print_sud_pd(thread_current()->sup_pagedir);
     print_frame_table();

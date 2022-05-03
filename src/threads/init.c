@@ -34,6 +34,7 @@
 #include "tests/threads/tests.h"
 #endif
 #include "vm/frame.h"
+#include "vm/swap.h"
 #ifdef FILESYS
 #include "devices/block.h"
 #include "devices/ide.h"
@@ -129,6 +130,7 @@ int pintos_init(void) {
     ide_init();
     locate_block_devices();
     filesys_init(format_filesys);
+    swap_slot_init();
 #endif
 
     printf("Boot complete.\n");
