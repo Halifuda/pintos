@@ -15,7 +15,8 @@
 static void syscall_handler (struct intr_frame *);
 
 /** recording error caused by read. */
-static enum read_error_number {
+static enum read_error_number 
+{
     READ_NO_ERROR,    /**< no error occur. */
     READ_NULL_BUFFER, /**< empty buffer. */
     READ_OVERFLOW,    /**< read overflow. */
@@ -24,7 +25,8 @@ static enum read_error_number {
 static struct lock read_errno_lock; /**< lock for read_errno. */
 
 /** recording error caused by read. */
-static enum write_error_number {
+static enum write_error_number 
+{
     WRITE_NO_ERROR,    /**< no error occur. */
     WRITE_NULL_BUFFER, /**< empty buffer. */
     WRITE_OVERFLOW,    /**< read overflow. */
@@ -79,7 +81,8 @@ syscall_init (void)
    UADDR must be below PHYS_BASE.
    Returns the byte value if successful, -1 if a segfault
    occurred. Code from pintosbook. */
-static int get_user(const uint8_t *uaddr) {
+static int get_user(const uint8_t *uaddr) 
+{
     int result;
     asm("movl $1f, %0; movzbl %1, %0; 1:" : "=&a"(result) : "m"(*uaddr));
     return result;
@@ -89,7 +92,8 @@ static int get_user(const uint8_t *uaddr) {
    UDST must be below PHYS_BASE.
    Returns true if successful, false if a segfault occurred. 
    Code from pintosbook. */
-static bool put_user(uint8_t *udst, uint8_t byte) {
+static bool put_user(uint8_t *udst, uint8_t byte) 
+{
     int error_code;
     asm("movl $1f, %0; movb %b2, %1; 1:"
         : "=&a"(error_code), "=m"(*udst)
@@ -339,7 +343,11 @@ static int syscall_wait(struct intr_frame *f)
 {
     int child_pid = (int)read_user_int((const uint8_t *)f->esp + 4);
     enum read_error_number no = get_read_errno();
-    if (no != READ_NO_ERROR) return -1;
+    if (no != READ_NO_ERROR) 
+    {
+        syscall_exit(f, -1);
+        return -1;
+    }
     int res = process_wait(child_pid);
     return res;
 }
@@ -434,7 +442,11 @@ static void syscall_close(struct intr_frame *f)
 #endif
     int fdid = (int)read_user_int((const uint8_t *)f->esp + 4);
     enum read_error_number no = get_read_errno();
-    if (no != READ_NO_ERROR) return;
+    if (no != READ_NO_ERROR) 
+    {
+        syscall_exit(f, -1);
+        return;
+    }
     check_first_fd();
     struct file_descriptor *fd = get_fd_ptr(&thread_current()->fdvector, fdid);
     fd_close(fd);
@@ -444,7 +456,11 @@ static int syscall_filesize(struct intr_frame *f)
 {
     int fdid = (int)read_user_int((const uint8_t *)f->esp + 4);
     enum read_error_number no = get_read_errno();
-    if (no != READ_NO_ERROR) return -1;
+    if (no != READ_NO_ERROR) 
+    {
+        syscall_exit(f, -1);
+        return -1;
+    }
 
     struct file_descriptor *fd = get_fd_ptr(&thread_current()->fdvector, fdid);
     if (fd == NULL || !get_fd_right(fd, FD_R | FD_V) 
@@ -527,11 +543,11 @@ static int syscall_read(struct intr_frame *f)
         if (fd == NULL || !get_fd_right(fd, FD_R | FD_V) || !fd->opened) return -1;
         res = syscall_read_fd(fd, buffer, size);
     }
-    if(get_write_errno() == WRITE_OVERFLOW)
+    if(get_write_errno() != WRITE_NO_ERROR)
     {
-        /* write overflow (exceed user space) should terminate the process. */
-        syscall_exit(f, -1);
+        /* by appling vm, write error should terminate the process. */
         free(arg_buffer);
+        syscall_exit(f, -1);
         return -1;
     }
     free(arg_buffer);
@@ -633,7 +649,8 @@ static unsigned syscall_tell(struct intr_frame *f)
 {
     int fdid = (int)read_user_int((const uint8_t *)f->esp + 4);
     enum read_error_number no = get_read_errno();
-    if (no != READ_NO_ERROR) {
+    if (no != READ_NO_ERROR) 
+    {
         /* any bad read int should terminate process. */
         syscall_exit(f, -1);
         return 0;

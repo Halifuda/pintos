@@ -88,3 +88,31 @@ bool page_fault_install_page(struct sup_pte *spte, uint8_t *kpage)
     return (pagedir_get_page(t->pagedir, spte->vpage) == NULL &&
             pagedir_set_page(t->pagedir, spte->vpage, kpage, spte_can_write(spte)));
 }
+
+
+/* Handler function for page_fault to handle non-present fault.
+   Given fault addr, access mode(w/r), access thread type(user/kernel). */
+bool page_fault_not_present_handler(uint8_t *fault_addr, bool write, bool user)
+{
+    /* Find the sup-pte. */
+    struct sup_pte *spte = page_fault_get_spte(fault_addr);
+    if (spte == NULL) return false;
+
+    /* Check if need to load. */
+    if (page_fault_need_load(spte, true, write)) 
+    {
+        /* Load the page from file to a frame. */
+        uint8_t *kpage = page_fault_load_page(spte);
+        if (kpage != NULL)  // succeeded
+        {
+            /* Install the page to user's space. */
+            if (page_fault_install_page(spte, kpage))
+                return true;
+            else /* Failed to install the page. */
+                free_frame(kpage);
+        } /* Failed to load. */
+    } /* No need to load. */
+
+    /* Reach here if whatever error occured. */
+    return false;
+}

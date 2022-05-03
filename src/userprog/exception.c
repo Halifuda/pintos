@@ -149,43 +149,39 @@ page_fault (struct intr_frame *f)
   not_present = (f->error_code & PF_P) == 0;
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
-  /* If page_fault is caused by a syscall, simply do belows.
+  bool res = false;
+
+  /* Handle not_present fault by try to load the page. */
+  if (not_present) 
+  {
+      res = page_fault_not_present_handler(fault_addr, write, user);
+      /* kill process if failed to handle not_present. */
+      if (!res) 
+      {
+         if(user)
+            kill(f);
+      }
+  }
+  else if(user) /* present but page fault, always kill. */
+      kill(f);
+
+  /* If page_fault is caused by a syscall, do belows to set the eip.
      Code from pintosbook. */
   if (!user) 
   {
     f->eip = (void (*)(void))f->eax;
-    f->eax = -1;
-    return;
+    f->eax = res ? 0 : -1;
   }
-
-   /* If page_fault is caused by user, activate supplemental page table to handle it. */
-  else
-  {
-     /* Find the sup-pte. */
-     struct sup_pte *spte = page_fault_get_spte(fault_addr);
-     /* Check if need to load. */
-     if(page_fault_need_load(spte, not_present, write))
-     {
-        /* Load the page from file to a frame. */
-         uint8_t *kpage = page_fault_load_page(spte);
-         if(kpage != NULL) // succeeded
-         {
-            /* Install the page to user's space. */
-             if (page_fault_install_page(spte, kpage)) return;
-             else
-                 free_frame(kpage);
-         }
-     }
-  }
+  return;
 
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
      which fault_addr refers. */
-  printf ("Page fault at %p: %s error %s page in %s context.\n",
-          fault_addr,
-          not_present ? "not present" : "rights violation",
-          write ? "writing" : "reading",
-          user ? "user" : "kernel");
-  kill (f);
+//  printf ("Page fault at %p: %s error %s page in %s context.\n",
+//          fault_addr,
+//          not_present ? "not present" : "rights violation",
+//          write ? "writing" : "reading",
+//          user ? "user" : "kernel");
+//  kill (f);
 }
 
