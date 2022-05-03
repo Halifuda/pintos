@@ -231,7 +231,6 @@ static void free_file_spte(struct sup_pte *spte UNUSED)
 /* Help function to free a spte in swap. */
 static void free_swap_spte(struct sup_pte *spte) 
 {
-    return;
     if (spte->file_info != NULL && spte_can_write(spte))
     {
         uint8_t *kpage = palloc_get_page(0);
