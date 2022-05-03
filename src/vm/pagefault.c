@@ -65,7 +65,7 @@ uint8_t *page_fault_load_page(struct sup_pte *spte)
         if (evt_fte != NULL) 
         {
             if (evict_spte((struct sup_pte *)evt_fte->spte)) 
-                fte = alloc_frame_struct(true);
+                fte = reclaim_frame_struct(false);
         }
     }
     if (fte == NULL) return NULL;

@@ -629,7 +629,7 @@ setup_stack (void **esp)
       if(evt_fte != NULL)
       {
         if(evict_spte((struct sup_pte *)evt_fte->spte))
-            kpage = alloc_frame(true);
+            kpage = reclaim_frame(true);
       }
   }
   if (kpage != NULL) 

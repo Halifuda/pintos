@@ -152,3 +152,32 @@ void evict_frame(struct frame *fte)
     hash_delete(&frame_hash, &fte->elem);
     list_pop_front(&frame_list);
 }
+
+void *reclaim_frame(bool zero)
+{
+    struct frame *evt_fte =
+        list_entry(list_pop_front(&frame_list), struct frame, l_elem);
+
+    evt_fte->spte = NULL;
+    if(zero)
+    {
+        palloc_free_page(evt_fte->paddr);
+        evt_fte->paddr = palloc_get_page(PAL_USER | PAL_ZERO);
+    }
+    list_push_back(&frame_list, &evt_fte->l_elem);
+    return evt_fte->paddr;
+}
+struct frame *reclaim_frame_struct(bool zero)
+{
+    struct frame *evt_fte =
+        list_entry(list_pop_front(&frame_list), struct frame, l_elem);
+
+    evt_fte->spte = NULL;
+    if (zero) 
+    {
+        palloc_free_page(evt_fte->paddr);
+        evt_fte->paddr = palloc_get_page(PAL_USER | PAL_ZERO);
+    }
+    list_push_back(&frame_list, &evt_fte->l_elem);
+    return evt_fte;
+}

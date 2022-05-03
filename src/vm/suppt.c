@@ -260,7 +260,7 @@ static bool evict_to_swap(struct sup_pte *spte, block_sector_t idx)
 {
     struct frame *fte = spte->mem_swap_info->fte;
     write_swap(fte->paddr, idx, SECCNT);
-    return spte_set_info(spte, spte->vpage, SPD_SWAP, (void *)idx, NULL, NULL);
+    return spte_set_info(spte, spte->vpage, SPD_SWAP, (void *)&idx, NULL, NULL);
 }
 
 /* Evict a spte present in memory. */

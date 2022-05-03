@@ -27,7 +27,8 @@ void *get_frame_spte(struct frame *);
 void set_frame_spte(struct frame *, void *);
 void free_frame(uint8_t *);
 struct frame *find_evict_frame(void);
-void evict_frame(struct frame *);
+void *reclaim_frame(bool);
+struct frame *reclaim_frame_struct(bool);
 
 /* Frame Table operations. */
 
