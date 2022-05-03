@@ -35,7 +35,7 @@ static void free_spte_hash_func(struct hash_elem *e, void *aux UNUSED)
 void free_sup_pd(struct sup_pagedir *spd)
 {
     if (spd == NULL) return;
-    hash_apply(&spd->spthash, free_spte_hash_func);
+    hash_clear(&spd->spthash, free_spte_hash_func);
     free(spd);
 }
 
@@ -220,7 +220,6 @@ void free_spte(struct sup_pte *spte)
         free_file_spte(spte);
         free(spte->file_info);
     }
-    hash_delete(&spd->spthash, &spte->elem);
     pagedir_clear_page(spd->pagedir, spte->vpage);
     free(spte);
 }
