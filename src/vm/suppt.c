@@ -239,35 +239,3 @@ bool spte_less_func(const struct hash_elem *a, const struct hash_elem *b, void *
     struct sup_pte *pteB = hash_entry(b, struct sup_pte, elem);
     return pteA->vpage < pteB->vpage;
 }
-
-/* Debug Code. */
-
-static void print_spte_mem(struct sup_pte *spte)
-{
-    struct memory_swap_info *info = spte->mem_swap_info;
-    printf("in mem, frame :%p", info->fte->paddr);
-}
-
-static void print_spte_file(struct sup_pte *spte)
-{
-    struct file_info *info = spte->file_info;
-    printf("in file, offs: %lu", info->offset);
-}
-
-static void print_spte_func(struct hash_elem *e, void *aux UNUSED)
-{
-    struct sup_pte *spte = hash_entry(e, struct sup_pte, elem);
-    printf("    spte: %p - ", spte->vpage);
-    if (spte_in_memory(spte)) print_spte_mem(spte);
-    if (spte_in_file(spte)) print_spte_file(spte);
-    printf("\n");
-}
-
-void print_sud_pd(struct sup_pagedir *spd)
-{
-    printf(
-        "    spd:\n"
-        "    pagedir: %p\n",
-        spd->pagedir);
-    hash_apply(&spd->spthash, print_spte_func);
-}

@@ -82,7 +82,4 @@ unsigned spte_hash_func(const struct hash_elem *, void *);
 bool spte_less_func(const struct hash_elem *, const struct hash_elem *,
                      void *);
 
-/* Debug Code. */
-void print_sud_pd(struct sup_pagedir *);
-
 #endif /**< vm/suppt.h */

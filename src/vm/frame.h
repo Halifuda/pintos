@@ -37,7 +37,4 @@ unsigned frame_hash_func(const struct hash_elem *, void *);
 bool frame_less_func(const struct hash_elem *, const struct hash_elem *,
                      void *);
 
-/* Debug Code. */
-void print_frame_table(void);
-
 #endif /**< vm/frame.h */

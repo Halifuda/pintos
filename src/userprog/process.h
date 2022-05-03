@@ -9,8 +9,4 @@ void process_exit (void);
 int process_check_load(tid_t);
 void process_activate (void);
 
-
-/* Debug Code. */
-void print_debug(void);
-
 #endif /**< userprog/process.h */

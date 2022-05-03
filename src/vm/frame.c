@@ -146,13 +146,3 @@ bool frame_less_func(const struct hash_elem *a,
     struct frame *fteB = hash_entry(b, struct frame, elem);
     return fteA->paddr < fteB->paddr;
 }
-
-/* Debug Code. */
-
-static void print_frame_func(struct hash_elem *e, void *aux UNUSED)
-{
-    struct frame *fte = hash_entry(e, struct frame, elem);
-    printf("    frame: %p;\n", fte->paddr);
-}
-
-void print_frame_table(void) { hash_apply(&frame_hash, print_frame_func); }
