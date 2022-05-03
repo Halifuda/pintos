@@ -206,7 +206,15 @@ static void spte_write_back(struct sup_pte *spte, uint8_t *kpage)
 
     file = file_reopen(file);
     if (file == NULL) return;
-    while (bytes > 0) bytes -= file_write_at(file, kpage, bytes, ofs);
+    while (bytes > 0) 
+    {
+        size_t written = file_write_at(file, kpage, bytes, ofs);
+        bytes -= written;
+
+        /* In this case, failed to write any bytes when not reach EOF, 
+            quit immediately to avoid infinite loop. */
+        if (written == 0 && ofs < file_length(file)) break;
+    }
     file_close(file);
 }
 

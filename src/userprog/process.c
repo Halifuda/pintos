@@ -257,7 +257,6 @@ process_exit (void)
   /* print exit status. */
   printf("%s: exit(%d)\n", thread_current()->name, thread_current()->exid);
 
-  fd_vec_free(&thread_current()->fdvector);
   if (cur->exec_file != NULL) file_allow_write(cur->exec_file);
   
   /* Destroy the current process's supplemental page tabel. */
@@ -265,6 +264,7 @@ process_exit (void)
     free_sup_pd(spd);
   
   /* Close file after free the spd for it will write back sth. */
+  fd_vec_free(&thread_current()->fdvector);
   file_close(cur->exec_file);
 
 /* Destroy the current process's page directory and switch back

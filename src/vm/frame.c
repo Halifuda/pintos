@@ -144,15 +144,7 @@ struct frame *find_evict_frame(void)
     return list_entry(list_front(&frame_list), struct frame, l_elem);
 }
 
-/* Evict the frame. Do the write back before call this function. */
-void evict_frame(struct frame *fte) 
-{ 
-    ASSERT(fte == find_evict_frame());
-
-    hash_delete(&frame_hash, &fte->elem);
-    list_pop_front(&frame_list);
-}
-
+/* re allocate a frame by evicting a frame, write back before call this. */
 void *reclaim_frame(bool zero)
 {
     struct frame *evt_fte =
@@ -167,6 +159,9 @@ void *reclaim_frame(bool zero)
     list_push_back(&frame_list, &evt_fte->l_elem);
     return evt_fte->paddr;
 }
+
+/* re allocate a frame by evicting a frame, write back before call this. 
+   Same behavior with reclaim_frame() but return struct. */
 struct frame *reclaim_frame_struct(bool zero)
 {
     struct frame *evt_fte =
