@@ -76,6 +76,7 @@ process_execute (char *file_args)
     sema_down(load_sema);
 
   free(load_sema);
+
   return tid;
 }
 
@@ -252,6 +253,8 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
+
+  // print_debug();
 
   /* print exit status. */
   printf("%s: exit(%d)\n", thread_current()->name, thread_current()->exid);
@@ -656,4 +659,12 @@ install_page (void *upage, void *kpage, bool writable)
      address, then map our page there. */
   return (pagedir_get_page (t->pagedir, upage) == NULL
           && pagedir_set_page (t->pagedir, upage, kpage, writable));
+}
+
+void print_debug(void)
+{
+    printf("DEBUG: exit process:%s\n", thread_current()->name);
+    printf("       pagedir: %p\n", thread_current()->pagedir);
+    print_sud_pd(thread_current()->sup_pagedir);
+    print_frame_table();
 }

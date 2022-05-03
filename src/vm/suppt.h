@@ -12,28 +12,30 @@
    Each suppt contains multiple s-pte that the process using.
    Each s-pte is accessed from a pte. */
 
-/* Supplemental Page Table Entry. */
-struct sup_pte 
-{
-    uint8_t *vpage;         /**< page virtual address. */
-    uint8_t info;           /**< recorded infomation bit vector. */
-    void *pointer;          /**< pointer to the detailed infomation. */
-    struct hash_elem elem;  /**< hash table element. */
-};
-
 /* Detailed infomation for a sup-pte if the page is in memory. */
-struct in_memory_info
+struct memory_swap_info
 {
     struct frame *fte;      /**< frame table entry address. */
 };
 
 /* Detailed infomation for a sup-pte if the page is in a file. */
-struct in_file_info
+struct file_info
 {
     struct file *fp;        /**< file struct pointer. */
     size_t offset;        /**< file offset. */
     size_t read_bytes;    /**< bytes count for un-zero read. */
 };
+
+/* Supplemental Page Table Entry. */
+struct sup_pte 
+{
+    uint8_t *vpage;                             /**< page virtual address. */
+    uint8_t info;                               /**< recorded infomation bit vector. */
+    struct memory_swap_info *mem_swap_info;     /**< memory of swap infomation. */
+    struct file_info *file_info;                /**< file infomation(always record this). */
+    struct hash_elem elem;                      /**< hash table element. */
+};
+
 
 /* Page directory saved for a single user process. */
 struct sup_pagedir
@@ -75,8 +77,12 @@ bool sign_up_spte(struct sup_pte *);
 void free_spte(struct sup_pte *);
 
 /* Hash Table helper. */
+
 unsigned spte_hash_func(const struct hash_elem *, void *);
 bool spte_less_func(const struct hash_elem *, const struct hash_elem *,
                      void *);
+
+/* Debug Code. */
+void print_sud_pd(struct sup_pagedir *);
 
 #endif /**< vm/suppt.h */

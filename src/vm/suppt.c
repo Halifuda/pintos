@@ -3,6 +3,8 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
+#include <stdio.h>
+
 /* Allocate a sup-pagedir for a thread. Given the raw pagedir address. */
 void *alloc_sup_pd(uint32_t *pagedir)
 {
@@ -79,7 +81,8 @@ struct sup_pte *alloc_spte(bool writable)
     struct sup_pte *spte = (struct sup_pte *)malloc(sizeof(struct sup_pte));
     if (spte == NULL) return NULL;
     spte->info = (uint8_t)0;
-    spte->pointer = NULL;
+    spte->mem_swap_info = NULL;
+    spte->file_info = NULL;
     spte_set_writable(spte, writable ? SPD_RW : SPD_RO);
     return spte;
 }
@@ -122,11 +125,11 @@ bool spte_set_info(struct sup_pte *spte, uint8_t *vpage, uint8_t place, void *da
 static bool spte_set_memory_info(struct sup_pte *spte, struct frame *fte)
 {
     if (spte == NULL || fte == NULL) return false;
-    struct in_memory_info *info =
-        (struct in_memory_info *)malloc(sizeof(struct in_memory_info));
+    struct memory_swap_info *info =
+        (struct memory_swap_info *)malloc(sizeof(struct memory_swap_info));
     if (info == NULL) return false;
     info->fte = fte;
-    spte->pointer = (void *)info;
+    spte->mem_swap_info = (void *)info;
     return true;
 }
 
@@ -134,13 +137,13 @@ static bool spte_set_memory_info(struct sup_pte *spte, struct frame *fte)
 static bool spte_set_file_info(struct sup_pte *spte, struct file *file, size_t offset, size_t read_bytes)
 {
     if (spte == NULL || file == NULL) return false;
-    struct in_file_info *info =
-        (struct in_file_info *)malloc(sizeof(struct in_file_info));
+    struct file_info *info =
+        (struct file_info *)malloc(sizeof(struct file_info));
     if (info == NULL) return false;
     info->fp = file;
     info->offset = offset;
     info->read_bytes = read_bytes;
-    spte->pointer = (void *)info;
+    spte->file_info = (void *)info;
     return true;
 }
 
@@ -178,9 +181,17 @@ bool sign_up_spte(struct sup_pte *spte)
 /* Help function to free a frame held by a spte. */
 static void free_memory_spte(struct sup_pte *spte)
 {
-    struct in_memory_info *info = (struct in_memory_info *)spte->pointer;
-    /* do not free the physical page here, for pagedir_destroy() has already freed it. */
+    struct memory_swap_info *info = spte->mem_swap_info;
+    /* Currently we do not write infomation back. */
+    /* do not free the physical page here, for pagedir_destroy() will free it. */
     remove_fte(info->fte);
+}
+
+/* Help function to free a spte in file. */
+static void free_file_spte(struct sup_pte *spte UNUSED)
+{
+    /* Currently do nothing. */
+    return;
 }
 
 /* Help function to free a spte in swap. */
@@ -196,11 +207,16 @@ void free_spte(struct sup_pte *spte)
     struct sup_pagedir *spd =
         (struct sup_pagedir *)thread_current()->sup_pagedir;
     if (spte == NULL || spd == NULL) return;
-    if (spte->pointer != NULL) 
+    if (spte->mem_swap_info != NULL) 
     {
         if (spte_in_memory(spte)) free_memory_spte(spte);
         if (spte_in_swap(spte)) free_swap_spte(spte);
-        free(spte->pointer);
+        free(spte->mem_swap_info);
+    }
+    if (spte->file_info != NULL) 
+    {
+        free_file_spte(spte);
+        free(spte->file_info);
     }
     hash_delete(&spd->spthash, &spte->elem);
     free(spte);
@@ -219,4 +235,36 @@ bool spte_less_func(const struct hash_elem *a, const struct hash_elem *b, void *
     struct sup_pte *pteA = hash_entry(a, struct sup_pte, elem);
     struct sup_pte *pteB = hash_entry(b, struct sup_pte, elem);
     return pteA->vpage < pteB->vpage;
+}
+
+/* Debug Code. */
+
+static void print_spte_mem(struct sup_pte *spte)
+{
+    struct memory_swap_info *info = spte->mem_swap_info;
+    printf("in mem, frame :%p", info->fte->paddr);
+}
+
+static void print_spte_file(struct sup_pte *spte)
+{
+    struct file_info *info = spte->file_info;
+    printf("in file, offs: %lu", info->offset);
+}
+
+static void print_spte_func(struct hash_elem *e, void *aux UNUSED)
+{
+    struct sup_pte *spte = hash_entry(e, struct sup_pte, elem);
+    printf("    spte: %p - ", spte->vpage);
+    if (spte_in_memory(spte)) print_spte_mem(spte);
+    if (spte_in_file(spte)) print_spte_file(spte);
+    printf("\n");
+}
+
+void print_sud_pd(struct sup_pagedir *spd)
+{
+    printf(
+        "    spd:\n"
+        "    pagedir: %p\n",
+        spd->pagedir);
+    hash_apply(&spd->spthash, print_spte_func);
 }

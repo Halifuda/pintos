@@ -2,6 +2,7 @@
 
 #include "threads/malloc.h"
 #include "threads/palloc.h"
+#include <stdio.h>
 
 static struct hash frame_hash;
 
@@ -117,13 +118,15 @@ void free_fte(struct frame *fte)
     if (fte == NULL) return;
     hash_delete(&frame_hash, &fte->elem);
     if (fte->paddr != NULL) palloc_free_page(fte->paddr);
+    free(fte);
 }
 
-/* remove a fte from frame table, but do not free the page. */
+/* remove a fte from frame table, but do not free the related phy page. */
 void remove_fte(struct frame *fte)
 {
     if (fte == NULL) return;
     hash_delete(&frame_hash, &fte->elem);
+    free(fte);
 }
 
 /* Return the hashed value of a frame table entry. */
@@ -143,3 +146,13 @@ bool frame_less_func(const struct hash_elem *a,
     struct frame *fteB = hash_entry(b, struct frame, elem);
     return fteA->paddr < fteB->paddr;
 }
+
+/* Debug Code. */
+
+static void print_frame_func(struct hash_elem *e, void *aux UNUSED)
+{
+    struct frame *fte = hash_entry(e, struct frame, elem);
+    printf("    frame: %p;\n", fte->paddr);
+}
+
+void print_frame_table(void) { hash_apply(&frame_hash, print_frame_func); }

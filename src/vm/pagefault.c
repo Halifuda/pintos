@@ -3,6 +3,7 @@
 #include "userprog/pagedir.h"
 #include "threads/vaddr.h"
 #include "filesys/file.h"
+#include "userprog/syscall.h"
 
 /* Find the spte by virtual address in sup pagedir of curent thread. */
 struct sup_pte *page_fault_get_spte(void *vaddr)
@@ -26,13 +27,19 @@ bool page_fault_need_load(struct sup_pte *spte, bool not_present, bool write)
 /* Load a page from file. */
 static bool load_from_file(struct sup_pte *spte, uint8_t *kpage)
 {
-    struct in_file_info *info = (struct in_file_info *)spte->pointer;
+    struct file_info *info = spte->file_info;
     struct file *file = info->fp;
     size_t offset = info->offset;
     size_t read_bytes = info->read_bytes;
 
+    lock_acquire(&filesys_lock);
     file_seek(file, offset);
-    if (file_read(file, kpage, read_bytes) != (int)read_bytes) return false;
+    if (file_read(file, kpage, read_bytes) != (int)read_bytes) 
+    {
+        lock_release(&filesys_lock);
+        return false;
+    }
+    lock_release(&filesys_lock);
     return true;
 }
 
