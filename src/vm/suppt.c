@@ -6,6 +6,7 @@
 #include "threads/thread.h"
 #include "userprog/pagedir.h"
 #include "threads/vaddr.h"
+#include "swap.h"
 
 /* Allocate a sup-pagedir for a thread. Given the raw pagedir address. */
 void *alloc_sup_pd(uint32_t *pagedir)
@@ -91,7 +92,7 @@ struct sup_pte *alloc_spte(bool writable)
 
 static bool spte_set_memory_info(struct sup_pte *, struct frame *);
 static bool spte_set_file_info(struct sup_pte *, struct file *, size_t, size_t);
-static bool spte_set_swap_info(struct sup_pte *);
+static bool spte_set_swap_info(struct sup_pte *, block_sector_t);
 
 /* Set a sup-pte infomation, return true if success, false if failed.
    To call this function, be careful with the passed arguments described below:
@@ -101,13 +102,12 @@ static bool spte_set_swap_info(struct sup_pte *);
     -- void *dataptr: the pointer to the data.
         * If in memory, point it to the address;
         * If in file, point it to the file struct;
-        * If in swap, point it to the swap place.
+        * If in swap, point it to the swap index.
     -- void *aux1: help argument 1.
-        * Do not need if in memory;
-        * Be the offset of the page in the file if in file;
-        ...
+        * Do not need if in memory or swap;
+        * Be the offset of the page in the file if in file.
     -- void *aux2: help argument 2.
-        * Be the read bytes (PGSIZE - zero bytes) in the file page; */
+        * Be the read bytes (PGSIZE - zero bytes) in the file page. */
 bool spte_set_info(struct sup_pte *spte, uint8_t *vpage, uint8_t place, void *dataptr, void *aux1,
                    void *aux2)
 {
@@ -119,7 +119,7 @@ bool spte_set_info(struct sup_pte *spte, uint8_t *vpage, uint8_t place, void *da
     if(place == SPD_FILE)
         return spte_set_file_info(spte, (struct file *)dataptr, *(size_t *)aux1,
                                   *(size_t *)aux2);
-    if (place == SPD_SWAP) return spte_set_swap_info(spte);
+    if (place == SPD_SWAP) return spte_set_swap_info(spte, *(block_sector_t *)dataptr);
     return false;
 }
 
@@ -127,11 +127,15 @@ bool spte_set_info(struct sup_pte *spte, uint8_t *vpage, uint8_t place, void *da
 static bool spte_set_memory_info(struct sup_pte *spte, struct frame *fte)
 {
     if (spte == NULL || fte == NULL) return false;
-    struct memory_swap_info *info =
-        (struct memory_swap_info *)malloc(sizeof(struct memory_swap_info));
-    if (info == NULL) return false;
-    info->fte = fte;
-    spte->mem_swap_info = (void *)info;
+    if (spte->mem_swap_info == NULL)
+    {
+        struct memory_swap_info *info =
+            (struct memory_swap_info *)malloc(sizeof(struct memory_swap_info));
+        if (info == NULL) return false;
+        spte->mem_swap_info = info;
+    }
+    spte->mem_swap_info->fte = fte;
+    spte->mem_swap_info->sector_idx = SWAP_SEC_ERROR;
     return true;
 }
 
@@ -139,21 +143,33 @@ static bool spte_set_memory_info(struct sup_pte *spte, struct frame *fte)
 static bool spte_set_file_info(struct sup_pte *spte, struct file *file, size_t offset, size_t read_bytes)
 {
     if (spte == NULL || file == NULL) return false;
-    struct file_info *info =
-        (struct file_info *)malloc(sizeof(struct file_info));
-    if (info == NULL) return false;
-    info->fp = file;
-    info->offset = offset;
-    info->read_bytes = read_bytes;
-    spte->file_info = (void *)info;
+    if(spte->file_info == NULL)
+    {
+        struct file_info *info =
+            (struct file_info *)malloc(sizeof(struct file_info));
+        if (info == NULL) return false;
+        spte->file_info = info;
+    }
+    spte->file_info->fp = file;
+    spte->file_info->offset = offset;
+    spte->file_info->read_bytes = read_bytes;
     return true;
 }
 
 /* Help funciton to set spte infomation if it is a swap spte. */
-static bool spte_set_swap_info(struct sup_pte *spte UNUSED) 
-{ 
-    /* Currentli do nothing. */
-    return false; 
+static bool spte_set_swap_info(struct sup_pte *spte, block_sector_t idx) 
+{
+    if (spte == NULL || idx == SWAP_SEC_ERROR) return false;
+    if (spte->mem_swap_info == NULL) 
+    {
+        struct memory_swap_info *info =
+            (struct memory_swap_info *)malloc(sizeof(struct memory_swap_info));
+        if (info == NULL) return false;
+        spte->mem_swap_info = info;
+    }
+    spte->mem_swap_info->sector_idx = idx;
+    spte->mem_swap_info->fte = NULL;
+    return true;
 }
 
 /* Find the spte in a sup pagedir by virtual address. Return NULL it there is no such spte. */
@@ -222,6 +238,46 @@ void free_spte(struct sup_pte *spte)
     }
     pagedir_clear_page(spd->pagedir, spte->vpage);
     free(spte);
+}
+
+/* evict a page to file. */
+static bool evict_to_file(struct sup_pte *spte)
+{
+    if (spte->file_info == NULL) return false;
+    if (!pagedir_is_dirty(thread_current()->pagedir, spte->vpage)) return true;
+    struct file *file = spte->file_info->fp;
+    off_t ofs = spte->file_info->offset;
+    size_t bytes = spte->file_info->read_bytes;
+    struct frame *fte = spte->mem_swap_info->fte;
+
+    while(bytes > 0) bytes -= file_write_at(file, fte->paddr, bytes, ofs);
+    spte_set_place(spte, SPD_FILE);
+    return true;
+}
+
+/* evict a page to swap, allocate swap before call this. */
+static bool evict_to_swap(struct sup_pte *spte, block_sector_t idx)
+{
+    struct frame *fte = spte->mem_swap_info->fte;
+    write_swap(fte->paddr, idx, SECCNT);
+    return spte_set_info(spte, spte->vpage, SPD_SWAP, (void *)idx, NULL, NULL);
+}
+
+/* Evict a spte present in memory. */
+bool evict_spte(struct sup_pte *spte) 
+{ 
+    ASSERT(spte_in_memory(spte));
+
+    if(spte_can_write(spte))
+    {
+        /* Firstly try to allocate swap slot. */
+        block_sector_t sec_idx = alloc_swap_page();
+        if (sec_idx == SWAP_SEC_ERROR) return evict_to_file(spte);
+        return evict_to_swap(spte, sec_idx);
+    }
+    /* read only spte just need to change place. */
+    spte_set_place(spte, SPD_FILE);
+    return true;
 }
 
 /* Return the hashed value of a sup page table entry. */

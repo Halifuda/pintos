@@ -24,3 +24,21 @@ block_sector_t alloc_swap_page(void)
     lock_release(&swap_lock);
     return sec_idx;
 }
+
+/* Read given number of sectors starts from idx to kpage. */
+void read_swap(uint8_t *kpage, block_sector_t idx, size_t sec_cnt)
+{
+    ASSERT(bitmap_all(usage, idx, sec_cnt));
+
+    for (block_sector_t i = 0; i < sec_cnt; ++i)
+        block_read(swap, idx + i, kpage);
+}
+
+/* Write kpage to given number of sectors starts from idx. */
+void write_swap(const uint8_t *kpage, block_sector_t idx, size_t sec_cnt)
+{
+    ASSERT(bitmap_all(usage, idx, sec_cnt));
+
+    for (block_sector_t i = 0; i < sec_cnt; ++i)
+        block_write(swap, idx + i, kpage);
+}

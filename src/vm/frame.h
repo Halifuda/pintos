@@ -12,7 +12,9 @@
 struct frame 
 {
     uint8_t *paddr;             /**< (kernel virtual)page address for this frame. */
+    void *spte;                 /**< related sup page table. */
     struct hash_elem elem;      /**< hash table element. */
+    struct list_elem l_elem;    /**< list element for hotness trace. */
 };
 
 /* Frame Table interfaces. */
@@ -20,10 +22,12 @@ struct frame
 void frame_table_init(void);
 void *alloc_frame(bool);
 struct frame *alloc_frame_struct(bool);
-void *reclaim_frame(bool);
-struct frame *reclaim_frame_struct(bool);
 struct frame *sign_up_frame(uint8_t *);
+void *get_frame_spte(struct frame *);
+void set_frame_spte(struct frame *, void *);
 void free_frame(uint8_t *);
+struct frame *find_evict_frame(void);
+void evict_frame(struct frame *);
 
 /* Frame Table operations. */
 

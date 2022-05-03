@@ -623,6 +623,15 @@ setup_stack (void **esp)
   bool success = false;
 
   kpage = alloc_frame(true);
+  if(kpage == NULL)
+  {
+      struct frame *evt_fte = find_evict_frame();
+      if(evt_fte != NULL)
+      {
+        if(evict_spte((struct sup_pte *)evt_fte->spte))
+            kpage = alloc_frame(true);
+      }
+  }
   if (kpage != NULL) 
     {
       struct sup_pte *spte = alloc_spte(true);
@@ -635,7 +644,10 @@ setup_stack (void **esp)
       }
       success = install_page(((uint8_t *)PHYS_BASE) - PGSIZE, kpage, true);
       if (success)
-        *esp = PHYS_BASE;
+      {
+          set_frame_spte(spte->mem_swap_info->fte, (void *)spte);
+          *esp = PHYS_BASE;
+      }
       else
         free_frame (kpage);
     }

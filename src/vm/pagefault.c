@@ -43,7 +43,7 @@ static bool load_from_file(struct sup_pte *spte, uint8_t *kpage)
     return true;
 }
 
-/* Load a page from swap. Currently do nothing. */
+/* Load a page from swap. */
 static bool load_from_swap(struct sup_pte *spte UNUSED, uint8_t *kpage UNUSED) { return false; }
 
 /* Load a page from file or swap to memory. Allocate a frame by alloc_frame(). 
@@ -52,6 +52,15 @@ uint8_t *page_fault_load_page(struct sup_pte *spte)
 {
     /* Get a frame. */
     struct frame *fte = alloc_frame_struct(false);
+    if (fte == NULL) 
+    {
+        struct frame *evt_fte = find_evict_frame();
+        if (evt_fte != NULL) 
+        {
+            if (evict_spte((struct sup_pte *)evt_fte->spte)) 
+                fte = alloc_frame_struct(true);
+        }
+    }
     if (fte == NULL) return NULL;
     uint8_t *kpage = fte->paddr;
 
@@ -74,7 +83,12 @@ uint8_t *page_fault_load_page(struct sup_pte *spte)
     }
 
     /* Change the spte to in-memory-spte. */
-    spte_set_info(spte, spte->vpage, SPD_MEM, (void *)fte, NULL, NULL);
+    if(!spte_set_info(spte, spte->vpage, SPD_MEM, (void *)fte, NULL, NULL)) 
+    {
+        free_frame(kpage);
+        return NULL;
+    }
+    set_frame_spte(spte->mem_swap_info->fte, (void *)spte);
     return kpage;
 }
 
@@ -92,7 +106,7 @@ bool page_fault_install_page(struct sup_pte *spte, uint8_t *kpage)
 
 /* Handler function for page_fault to handle non-present fault.
    Given fault addr, access mode(w/r), access thread type(user/kernel). */
-bool page_fault_not_present_handler(uint8_t *fault_addr, bool write, bool user)
+bool page_fault_not_present_handler(uint8_t *fault_addr, bool write, bool user UNUSED)
 {
     /* Find the sup-pte. */
     struct sup_pte *spte = page_fault_get_spte(fault_addr);

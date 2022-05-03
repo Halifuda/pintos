@@ -16,6 +16,7 @@
 struct memory_swap_info
 {
     struct frame *fte;      /**< frame table entry address. */
+    uint32_t sector_idx;    /**< swap starting sector index. */
 };
 
 /* Detailed infomation for a sup-pte if the page is in a file. */
@@ -75,6 +76,7 @@ bool spte_set_info(struct sup_pte *spte, uint8_t *vpage, uint8_t place, void *da
 struct sup_pte *find_spte(struct sup_pagedir *, void *);
 bool sign_up_spte(struct sup_pte *);
 void free_spte(struct sup_pte *);
+bool evict_spte(struct sup_pte *);
 
 /* Hash Table helper. */
 

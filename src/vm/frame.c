@@ -5,11 +5,13 @@
 #include <stdio.h>
 
 static struct hash frame_hash;
+static struct list frame_list;
 
 /* Set up the frame table. */
 void frame_table_init(void) 
 {   
     hash_init(&frame_hash, frame_hash_func, frame_less_func, NULL);
+    list_init(&frame_list);
 }
 
 /* Allocate a single frame for user.
@@ -21,9 +23,8 @@ void *alloc_frame(bool zero)
     int zero_flag = zero == true ? PAL_ZERO : 0;
     uint8_t *kpage = palloc_get_page(PAL_USER | zero_flag);
 
-    /* If there is no free frame, reclaim a frame. */
-    if (kpage == NULL) 
-        return reclaim_frame(zero);
+    /* If there is no free frame, leave to the caller. */
+    if (kpage == NULL) return NULL;
 
     /* sign up the frame to frame table. */
     if(sign_up_frame(kpage) == NULL)
@@ -42,10 +43,9 @@ struct frame *alloc_frame_struct(bool zero)
     int zero_flag = zero == true ? PAL_ZERO : 0;
     uint8_t *kpage = palloc_get_page(PAL_USER | zero_flag);
 
-    /* If there is no free frame, reclaim a frame. */
-    if (kpage == NULL) 
-        return reclaim_frame_struct(zero);
-    
+    /* If there is no free frame, leave to the caller. */
+    if (kpage == NULL) return NULL;
+
     /* sign up the frame to frame table. */
     struct frame *fte = sign_up_frame(kpage);
 
@@ -63,23 +63,6 @@ void free_frame(uint8_t *kpage)
     free_fte(fte);
 }
 
-/* Reclaim a frame by evicting a existing frame. */
-void *reclaim_frame(bool zero UNUSED) 
-{
-    /* currently do nothing. */
-    PANIC("run out of frame.");
-    return NULL;
-}
-
-/* Reclaim a frame by evicting a existing frame.
-   Same behavior with reclaim_frame(), but return a struct pointer. */
-struct frame *reclaim_frame_struct(bool zero UNUSED)
-{
-    /* currently do nothing. */
-    PANIC("run out pf frame. ");
-    return NULL;
-}
-
 /* Sign up a frame noted by kernel virtual address to frame table. 
    If any unexpected condition happens, return false. Else true. */
 struct frame *sign_up_frame(uint8_t *kpage) 
@@ -88,6 +71,7 @@ struct frame *sign_up_frame(uint8_t *kpage)
     struct frame *fte = (struct frame *)malloc(sizeof(struct frame));
     if (fte == NULL) return NULL;
     fte->paddr = kpage;
+    fte->spte = NULL;
     /* insert the frame into frame hash table. */
     /* check if there is no existing frame with the same address. */
     if (hash_insert(&frame_hash, &fte->elem) != NULL) 
@@ -95,8 +79,13 @@ struct frame *sign_up_frame(uint8_t *kpage)
         free(fte);
         return NULL;
     }
+    list_push_back(&frame_list, &fte->l_elem);
     return fte;
 }
+
+/* Functions to related a frame to a spte. */
+void *get_frame_spte(struct frame *fte) { return fte->spte; }
+void set_frame_spte(struct frame *fte, void *spte) { fte->spte = spte; }
 
 /* Find a frame entry noted by kernel virtual address in frame table. */
 struct frame *find_frame_entry(uint8_t *kpage)
@@ -117,6 +106,7 @@ void free_fte(struct frame *fte)
 {
     if (fte == NULL) return;
     hash_delete(&frame_hash, &fte->elem);
+    list_remove(&fte->l_elem);
     if (fte->paddr != NULL) palloc_free_page(fte->paddr);
     free(fte);
 }
@@ -126,6 +116,7 @@ void remove_fte(struct frame *fte)
 {
     if (fte == NULL) return;
     hash_delete(&frame_hash, &fte->elem);
+    list_remove(&fte->l_elem);
     free(fte);
 }
 
@@ -145,4 +136,19 @@ bool frame_less_func(const struct hash_elem *a,
     struct frame *fteA = hash_entry(a, struct frame, elem);
     struct frame *fteB = hash_entry(b, struct frame, elem);
     return fteA->paddr < fteB->paddr;
+}
+
+/* return the frame that will be evict next time. */
+struct frame *find_evict_frame(void)
+{
+    return list_entry(list_front(&frame_list), struct frame, l_elem);
+}
+
+/* Evict the frame. Do the write back before call this function. */
+void evict_frame(struct frame *fte) 
+{ 
+    ASSERT(fte == find_evict_frame());
+
+    hash_delete(&frame_hash, &fte->elem);
+    list_pop_front(&frame_list);
 }
