@@ -165,12 +165,13 @@ page_fault (struct intr_frame *f)
   else if(user) /* present but page fault, always kill. */
       kill(f);
 
-  /* If page_fault is caused by a syscall, do belows to set the eip.
+  /* If page_fault is caused by a syscall, do belows to set the eip and return value.
      Code from pintosbook. */
   if (!user) 
   {
     f->eip = (void (*)(void))f->eax;
-    f->eax = res ? 0 : -1;
+    /* return -1 if fail, 1 if a page_fault is handled. */
+    f->eax = res ? 1 : -1; 
   }
   return;
 

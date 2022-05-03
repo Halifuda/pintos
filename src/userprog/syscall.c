@@ -94,10 +94,16 @@ static int get_user(const uint8_t *uaddr)
    Code from pintosbook. */
 static bool put_user(uint8_t *udst, uint8_t byte) 
 {
-    int error_code;
-    asm("movl $1f, %0; movb %b2, %1; 1:"
-        : "=&a"(error_code), "=m"(*udst)
-        : "q"(byte));
+    int error_code = 1;
+    /* page_fault() will return 1 if a page_fault is successfully handled, we 
+     * try another time. */
+    while(error_code == 1)
+    {
+        error_code = 0;
+        asm("movl $1f, %0; movb %b2, %1; 1:"
+            : "=&a"(error_code), "=m"(*udst)
+            : "q"(byte));
+    }
     return error_code != -1;
 }
 
