@@ -34,6 +34,7 @@ struct sup_pte
     uint8_t info;                               /**< recorded infomation bit vector. */
     struct memory_swap_info *mem_swap_info;     /**< memory of swap infomation. */
     struct file_info *file_info;                /**< file infomation(always record this). */
+    uint32_t *pagedir;                          /**< pagedir holding this spte. */
     struct hash_elem elem;                      /**< hash table element. */
 };
 

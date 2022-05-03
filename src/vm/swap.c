@@ -22,6 +22,8 @@ block_sector_t alloc_swap_page(void)
     lock_acquire(&swap_lock);
     sec_idx = bitmap_scan_and_flip(usage, 0, SECCNT, false);
     lock_release(&swap_lock);
+
+    if (sec_idx == BITMAP_ERROR) return SWAP_SEC_ERROR;
     return sec_idx;
 }
 
@@ -32,7 +34,7 @@ void read_swap(uint8_t *kpage, block_sector_t idx, size_t sec_cnt)
 
     lock_acquire(&swap_lock);
     for (block_sector_t i = 0; i < sec_cnt; ++i)
-        block_read(swap, idx + i, kpage);
+        block_read(swap, idx + i, kpage + i * BLOCK_SECTOR_SIZE);
     lock_release(&swap_lock);
 }
 
@@ -43,7 +45,7 @@ void write_swap(const uint8_t *kpage, block_sector_t idx, size_t sec_cnt)
 
     lock_acquire(&swap_lock);
     for (block_sector_t i = 0; i < sec_cnt; ++i)
-        block_write(swap, idx + i, kpage);
+        block_write(swap, idx + i, kpage + i * BLOCK_SECTOR_SIZE);
     lock_release(&swap_lock);
 }
 

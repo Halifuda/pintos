@@ -259,11 +259,13 @@ process_exit (void)
 
   fd_vec_free(&thread_current()->fdvector);
   if (cur->exec_file != NULL) file_allow_write(cur->exec_file);
-  file_close(cur->exec_file);
   
   /* Destroy the current process's supplemental page tabel. */
     struct sup_pagedir *spd = cur->sup_pagedir;
     free_sup_pd(spd);
+  
+  /* Close file after free the spd for it will write back sth. */
+  file_close(cur->exec_file);
 
 /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */

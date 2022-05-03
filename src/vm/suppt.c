@@ -6,6 +6,7 @@
 #include "threads/thread.h"
 #include "userprog/pagedir.h"
 #include "threads/vaddr.h"
+#include "threads/palloc.h"
 #include "swap.h"
 
 /* Allocate a sup-pagedir for a thread. Given the raw pagedir address. */
@@ -192,15 +193,30 @@ bool sign_up_spte(struct sup_pte *spte)
     struct sup_pagedir *spd =
         (struct sup_pagedir *)thread_current()->sup_pagedir;
     if (spd == NULL) return false;
+    spte->pagedir = spd->pagedir;
     if (hash_insert(&spd->spthash, &spte->elem) != NULL) return false;
     return true;
+}
+
+static void spte_write_back(struct sup_pte *spte, uint8_t *kpage)
+{
+    struct file *file = spte->file_info->fp;
+    off_t ofs = spte->file_info->offset;
+    size_t bytes = spte->file_info->read_bytes;
+
+    file = file_reopen(file);
+    if (file == NULL) return;
+    while (bytes > 0) bytes -= file_write_at(file, kpage, bytes, ofs);
+    file_close(file);
 }
 
 /* Help function to free a frame held by a spte. */
 static void free_memory_spte(struct sup_pte *spte)
 {
     struct memory_swap_info *info = spte->mem_swap_info;
-    /* Currently we do not write infomation back. */
+    /* Write infomation back. */
+    if(spte->file_info != NULL && pagedir_is_dirty(spte->pagedir, spte->vpage))
+        spte_write_back(spte, (spte->mem_swap_info->fte)->paddr);
     /* do not free the physical page here, for pagedir_destroy() will free it. */
     remove_fte(info->fte);
 }
@@ -213,9 +229,17 @@ static void free_file_spte(struct sup_pte *spte UNUSED)
 }
 
 /* Help function to free a spte in swap. */
-static void free_swap_spte(struct sup_pte *spte UNUSED) 
-{ 
-    /* Currently do nothing. */
+static void free_swap_spte(struct sup_pte *spte) 
+{
+    return;
+    if (spte->file_info != NULL && spte_can_write(spte))
+    {
+        uint8_t *kpage = palloc_get_page(0);
+        if (kpage == NULL) return;
+        read_swap(kpage, spte->mem_swap_info->sector_idx, SECCNT);
+        spte_write_back(spte, kpage);
+    }
+    free_swap_page(spte->mem_swap_info->sector_idx);
     return; 
 }
 
@@ -245,12 +269,7 @@ static bool evict_to_file(struct sup_pte *spte)
 {
     if (spte->file_info == NULL) return false;
     if (!pagedir_is_dirty(thread_current()->pagedir, spte->vpage)) return true;
-    struct file *file = spte->file_info->fp;
-    off_t ofs = spte->file_info->offset;
-    size_t bytes = spte->file_info->read_bytes;
-    struct frame *fte = spte->mem_swap_info->fte;
-
-    while(bytes > 0) bytes -= file_write_at(file, fte->paddr, bytes, ofs);
+    spte_write_back(spte, (spte->mem_swap_info->fte)->paddr);
     spte_set_place(spte, SPD_FILE);
     return true;
 }
@@ -272,11 +291,18 @@ bool evict_spte(struct sup_pte *spte)
     {
         /* Firstly try to allocate swap slot. */
         block_sector_t sec_idx = alloc_swap_page();
-        if (sec_idx == SWAP_SEC_ERROR) return evict_to_file(spte);
-        return evict_to_swap(spte, sec_idx);
+        if (sec_idx == SWAP_SEC_ERROR) 
+        {
+            if (spte->file_info == NULL) PANIC("run out of swap.");
+            return evict_to_file(spte);
+        }
+        bool success = evict_to_swap(spte, sec_idx);
+        pagedir_clear_page(spte->pagedir, spte->vpage);
+        return success;
     }
     /* read only spte just need to change place. */
     spte_set_place(spte, SPD_FILE);
+    pagedir_clear_page(spte->pagedir, spte->vpage);
     return true;
 }
 

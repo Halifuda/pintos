@@ -4,14 +4,13 @@
 #include <debug.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include <bitmap.h>
 
 #include "devices/block.h"
 #include "threads/vaddr.h"
 
 /* sector count in a page. */
 #define SECCNT ((PGSIZE + BLOCK_SECTOR_SIZE - 1) / BLOCK_SECTOR_SIZE)
-#define SWAP_SEC_ERROR BITMAP_ERROR
+#define SWAP_SEC_ERROR 0xffffffffu
 
 void swap_slot_init(void);
 block_sector_t alloc_swap_page(void);
