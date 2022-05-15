@@ -58,14 +58,14 @@ static bool load_from_swap(struct sup_pte *spte, uint8_t *kpage)
 uint8_t *page_fault_load_page(struct sup_pte *spte) 
 {
     /* Get a frame. */
-    struct frame *fte = alloc_frame_struct(false);
+    struct frame *fte = alloc_frame_struct(true);
     if (fte == NULL) 
     {
         struct frame *evt_fte = find_evict_frame();
         if (evt_fte != NULL) 
         {
             if (evict_spte((struct sup_pte *)evt_fte->spte)) 
-                fte = reclaim_frame_struct(false);
+                fte = reclaim_frame_struct(true);
         }
     }
     if (fte == NULL) return NULL;

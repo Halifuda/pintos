@@ -147,16 +147,18 @@ struct frame *find_evict_frame(void)
 /* re allocate a frame by evicting a frame, write back before call this. */
 void *reclaim_frame(bool zero)
 {
-    struct frame *evt_fte =
-        list_entry(list_pop_front(&frame_list), struct frame, l_elem);
+    struct frame *evt_fte = find_evict_frame();
 
-    evt_fte->spte = NULL;
+    uint8_t *kpage = evt_fte->paddr;
+    remove_fte(evt_fte);
+
     if(zero)
     {
-        palloc_free_page(evt_fte->paddr);
-        evt_fte->paddr = palloc_get_page(PAL_USER | PAL_ZERO);
+        palloc_free_page(kpage);
+        kpage = palloc_get_page(PAL_USER | PAL_ZERO);
     }
-    list_push_back(&frame_list, &evt_fte->l_elem);
+
+    evt_fte = sign_up_frame(kpage);
     return evt_fte->paddr;
 }
 
@@ -164,15 +166,16 @@ void *reclaim_frame(bool zero)
    Same behavior with reclaim_frame() but return struct. */
 struct frame *reclaim_frame_struct(bool zero)
 {
-    struct frame *evt_fte =
-        list_entry(list_pop_front(&frame_list), struct frame, l_elem);
+    struct frame *evt_fte = find_evict_frame();
 
-    evt_fte->spte = NULL;
-    if (zero) 
-    {
-        palloc_free_page(evt_fte->paddr);
-        evt_fte->paddr = palloc_get_page(PAL_USER | PAL_ZERO);
+    uint8_t *kpage = evt_fte->paddr;
+    remove_fte(evt_fte);
+
+    if (zero) {
+        palloc_free_page(kpage);
+        kpage = palloc_get_page(PAL_USER | PAL_ZERO);
     }
-    list_push_back(&frame_list, &evt_fte->l_elem);
+
+    evt_fte = sign_up_frame(kpage);
     return evt_fte;
 }

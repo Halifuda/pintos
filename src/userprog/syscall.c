@@ -454,8 +454,7 @@ static void syscall_close(struct intr_frame *f)
         return;
     }
     check_first_fd();
-    struct file_descriptor *fd = get_fd_ptr(&thread_current()->fdvector, fdid);
-    fd_close(fd);
+    fdfree(&thread_current()->fdvector, fdid);
 }
 
 static int syscall_filesize(struct intr_frame *f)

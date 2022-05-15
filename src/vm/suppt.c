@@ -198,6 +198,7 @@ bool sign_up_spte(struct sup_pte *spte)
     return true;
 }
 
+/* write a spte associated frame to the spte file. */
 static void spte_write_back(struct sup_pte *spte, uint8_t *kpage)
 {
     struct file *file = spte->file_info->fp;
