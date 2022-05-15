@@ -2,16 +2,21 @@
 
 #include "threads/malloc.h"
 #include "threads/palloc.h"
+#include "threads/synch.h"
 #include <stdio.h>
 
 static struct hash frame_hash;
 static struct list frame_list;
+static struct lock frame_lock;
+static struct lock evict_lock;
 
 /* Set up the frame table. */
 void frame_table_init(void) 
 {   
     hash_init(&frame_hash, frame_hash_func, frame_less_func, NULL);
     list_init(&frame_list);
+    lock_init(&frame_lock);
+    lock_init(&evict_lock);
 }
 
 /* Allocate a single frame for user.
@@ -74,12 +79,18 @@ struct frame *sign_up_frame(uint8_t *kpage)
     fte->spte = NULL;
     /* insert the frame into frame hash table. */
     /* check if there is no existing frame with the same address. */
+    lock_acquire(&frame_lock);
+
     if (hash_insert(&frame_hash, &fte->elem) != NULL) 
     {
         free(fte);
+
+        lock_release(&frame_lock);
         return NULL;
     }
     list_push_back(&frame_list, &fte->l_elem);
+
+    lock_release(&frame_lock);
     return fte;
 }
 
@@ -94,7 +105,11 @@ struct frame *find_frame_entry(uint8_t *kpage)
     struct frame *fte = (struct frame *)malloc(sizeof(struct frame));
     if (fte == NULL) return NULL;
     fte->paddr = kpage;
+
+    lock_acquire(&frame_lock);
     struct hash_elem *e = hash_find(&frame_hash, &fte->elem);
+    lock_release(&frame_lock);
+
     free(fte);
     if (e == NULL) return NULL;
     fte = hash_entry(e, struct frame, elem);
@@ -105,8 +120,12 @@ struct frame *find_frame_entry(uint8_t *kpage)
 void free_fte(struct frame *fte) 
 {
     if (fte == NULL) return;
+
+    lock_acquire(&frame_lock);
     hash_delete(&frame_hash, &fte->elem);
     list_remove(&fte->l_elem);
+    lock_release(&frame_lock);
+
     if (fte->paddr != NULL) palloc_free_page(fte->paddr);
     free(fte);
 }
@@ -115,8 +134,12 @@ void free_fte(struct frame *fte)
 void remove_fte(struct frame *fte)
 {
     if (fte == NULL) return;
+
+    lock_acquire(&frame_lock);
     hash_delete(&frame_hash, &fte->elem);
     list_remove(&fte->l_elem);
+    lock_release(&frame_lock);
+
     free(fte);
 }
 
@@ -147,6 +170,8 @@ struct frame *find_evict_frame(void)
 /* re allocate a frame by evicting a frame, write back before call this. */
 void *reclaim_frame(bool zero)
 {
+    lock_acquire(&evict_lock);
+
     struct frame *evt_fte = find_evict_frame();
 
     uint8_t *kpage = evt_fte->paddr;
@@ -159,13 +184,17 @@ void *reclaim_frame(bool zero)
     }
 
     evt_fte = sign_up_frame(kpage);
+
+    lock_release(&evict_lock);
     return evt_fte->paddr;
 }
 
 /* re allocate a frame by evicting a frame, write back before call this. 
    Same behavior with reclaim_frame() but return struct. */
-struct frame *reclaim_frame_struct(bool zero)
+struct frame *reclaim_frame_struct(bool zero) 
 {
+    lock_acquire(&evict_lock);
+
     struct frame *evt_fte = find_evict_frame();
 
     uint8_t *kpage = evt_fte->paddr;
@@ -177,5 +206,10 @@ struct frame *reclaim_frame_struct(bool zero)
     }
 
     evt_fte = sign_up_frame(kpage);
+
+    lock_release(&evict_lock);
     return evt_fte;
 }
+
+/* Return number of used(valid) frame. */
+size_t frame_used_size(void) { return hash_size(&frame_hash); }

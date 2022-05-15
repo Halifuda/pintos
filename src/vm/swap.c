@@ -49,6 +49,7 @@ void write_swap(const uint8_t *kpage, block_sector_t idx, size_t sec_cnt)
     lock_release(&swap_lock);
 }
 
+/* Free a swap page. */
 void free_swap_page(block_sector_t idx)
 {
     ASSERT(bitmap_all(usage, idx, SECCNT));
@@ -56,4 +57,9 @@ void free_swap_page(block_sector_t idx)
     lock_acquire(&swap_lock);
     bitmap_set_multiple(usage, idx, SECCNT, false);
     lock_release(&swap_lock);
+}
+
+size_t swap_used_size(void)
+{
+    return bitmap_count(usage, 0, block_size(swap), true);
 }

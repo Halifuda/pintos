@@ -29,6 +29,7 @@ void free_frame(uint8_t *);
 struct frame *find_evict_frame(void);
 void *reclaim_frame(bool);
 struct frame *reclaim_frame_struct(bool);
+size_t frame_used_size(void);
 
 /* Frame Table operations. */
 
