@@ -79,18 +79,19 @@ struct frame *sign_up_frame(uint8_t *kpage)
     fte->spte = NULL;
     /* insert the frame into frame hash table. */
     /* check if there is no existing frame with the same address. */
-    lock_acquire(&frame_lock);
+    bool has_lock = lock_held_by_current_thread(&frame_lock);
+    if(!has_lock) lock_acquire(&frame_lock);
 
     if (hash_insert(&frame_hash, &fte->elem) != NULL) 
     {
         free(fte);
 
-        lock_release(&frame_lock);
+        if(!has_lock) lock_release(&frame_lock);
         return NULL;
     }
     list_push_back(&frame_list, &fte->l_elem);
 
-    lock_release(&frame_lock);
+    if(!has_lock) lock_release(&frame_lock);
     return fte;
 }
 
@@ -106,9 +107,12 @@ struct frame *find_frame_entry(uint8_t *kpage)
     if (fte == NULL) return NULL;
     fte->paddr = kpage;
 
-    lock_acquire(&frame_lock);
+    bool has_lock = lock_held_by_current_thread(&frame_lock);
+    if(!has_lock) lock_acquire(&frame_lock);
+
     struct hash_elem *e = hash_find(&frame_hash, &fte->elem);
-    lock_release(&frame_lock);
+
+    if(!has_lock) lock_release(&frame_lock);
 
     free(fte);
     if (e == NULL) return NULL;
@@ -121,10 +125,13 @@ void free_fte(struct frame *fte)
 {
     if (fte == NULL) return;
 
-    lock_acquire(&frame_lock);
+    bool has_lock = lock_held_by_current_thread(&frame_lock);
+    if(!has_lock) lock_acquire(&frame_lock);
+
     hash_delete(&frame_hash, &fte->elem);
     list_remove(&fte->l_elem);
-    lock_release(&frame_lock);
+
+    if(!has_lock) lock_release(&frame_lock);
 
     if (fte->paddr != NULL) palloc_free_page(fte->paddr);
     free(fte);
@@ -135,10 +142,13 @@ void remove_fte(struct frame *fte)
 {
     if (fte == NULL) return;
 
-    lock_acquire(&frame_lock);
+    bool has_lock = lock_held_by_current_thread(&frame_lock);
+    if(!has_lock) lock_acquire(&frame_lock);
+
     hash_delete(&frame_hash, &fte->elem);
     list_remove(&fte->l_elem);
-    lock_release(&frame_lock);
+
+    if(!has_lock) lock_release(&frame_lock);
 
     free(fte);
 }
@@ -163,10 +173,11 @@ bool frame_less_func(const struct hash_elem *a,
 
 /* return the frame that will be evict next time.
    Alway acquire lock and never release lock, we regarded this function be the start step to evict a frame. 
-   DO call reclaim_frame() or reclaim_frame_struct() after this func to release lock. */
+   DO call reclaim_frame() or reclaim_frame_struct() after this func to release lock. 
+   */
 struct frame *find_evict_frame(void)
 {
-    lock_acquire(&evict_lock);
+    lock_acquire(&frame_lock);
     return list_entry(list_front(&frame_list), struct frame, l_elem);
     /* Never release lock for a real evict will happen soon. */
 }
@@ -191,7 +202,7 @@ void *reclaim_frame(bool zero)
 
     evt_fte = sign_up_frame(kpage);
 
-    lock_release(&evict_lock);
+    lock_release(&frame_lock);
     return evt_fte->paddr;
 }
 
@@ -215,7 +226,7 @@ struct frame *reclaim_frame_struct(bool zero)
 
     evt_fte = sign_up_frame(kpage);
 
-    lock_release(&evict_lock);
+    lock_release(&frame_lock);
     return evt_fte;
 }
 

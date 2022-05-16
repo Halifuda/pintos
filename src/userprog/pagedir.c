@@ -6,10 +6,6 @@
 #include "threads/pte.h"
 #include "threads/palloc.h"
 
-// DEBUG
-#include <stdio.h>
-#include "threads/thread.h"
-
 static uint32_t *active_pd (void);
 static void invalidate_pagedir (uint32_t *);
 
@@ -147,9 +143,6 @@ pagedir_get_page (uint32_t *pd, const void *uaddr)
 void
 pagedir_clear_page (uint32_t *pd, void *upage) 
 {
-    // DEBUG
-    if (pg_ofs(upage) != 0) printf("%s:%d clear page at %p\n", thread_current()->name, thread_current()->tid, upage);
-
     uint32_t *pte;
 
     ASSERT(pg_ofs(upage) == 0);

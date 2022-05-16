@@ -7,9 +7,6 @@
 #include "userprog/syscall.h"
 #include "swap.h"
 
-// DEBUG
-#include <stdio.h>
-
 /* Find the spte by virtual address in sup pagedir of curent thread. */
 struct sup_pte *page_fault_get_spte(void *vaddr)
 {
@@ -119,15 +116,6 @@ bool page_fault_install_page(struct sup_pte *spte, uint8_t *kpage)
    Given fault addr, access mode(w/r), access thread type(user/kernel). */
 bool page_fault_not_present_handler(uint8_t *fault_addr, bool write, bool user UNUSED)
 {
-    // DEBUG
-    if((unsigned)fault_addr == 0 || (unsigned)fault_addr == 0xffffffff)
-    {
-        printf("%s:%d PAGE FAULT AT %p, FRAME=%lu, SWAP=%lu\n",
-           thread_current()->name, thread_current()->tid, fault_addr,
-           frame_used_size(), swap_used_size());
-        ASSERT((unsigned)fault_addr != 0 && (unsigned)fault_addr != 0xffffffff);
-    }
-
     /* Find the sup-pte. */
     struct sup_pte *spte = page_fault_get_spte(fault_addr);
     if (spte == NULL) return false;

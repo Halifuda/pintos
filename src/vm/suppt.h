@@ -27,6 +27,8 @@ struct file_info
     size_t read_bytes;    /**< bytes count for un-zero read. */
 };
 
+struct sup_pagedir;
+
 /* Supplemental Page Table Entry. */
 struct sup_pte 
 {
@@ -35,6 +37,7 @@ struct sup_pte
     struct memory_swap_info *mem_swap_info;     /**< memory of swap infomation. */
     struct file_info *file_info;                /**< file infomation(always record this). */
     uint32_t *pagedir;                          /**< pagedir holding this spte. */
+    struct sup_pagedir *spd;                    /**< sup pagedir holding this spte. */
     struct hash_elem elem;                      /**< hash table element. */
 };
 
@@ -42,8 +45,8 @@ struct sup_pte
 /* Page directory saved for a single user process. */
 struct sup_pagedir
 {
-    uint32_t *pagedir;      /**< page directory. */
-    struct hash spthash;      /**< hash table. */
+    uint32_t *pagedir;          /**< page directory. */
+    struct hash spthash;        /**< hash table. */
 };
 
 

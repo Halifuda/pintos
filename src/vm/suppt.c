@@ -7,6 +7,7 @@
 #include "userprog/pagedir.h"
 #include "threads/vaddr.h"
 #include "threads/palloc.h"
+#include "threads/synch.h"
 #include "swap.h"
 
 /* Allocate a sup-pagedir for a thread. Given the raw pagedir address. */
@@ -23,7 +24,7 @@ void *alloc_sup_pd(uint32_t *pagedir)
 /* Initialize a supplemental page talbe for a thread. */
 void sup_pd_init(struct sup_pagedir *spd) 
 { 
-    hash_init(&spd->spthash, spte_hash_func, spte_less_func, (void *)spd); 
+    hash_init(&spd->spthash, spte_hash_func, spte_less_func, (void *)spd);
 }
 
 /* Help function to free spte in a sup page dir. */
@@ -194,6 +195,7 @@ bool sign_up_spte(struct sup_pte *spte)
         (struct sup_pagedir *)thread_current()->sup_pagedir;
     if (spd == NULL) return false;
     spte->pagedir = spd->pagedir;
+    spte->spd = spd;
     if (hash_insert(&spd->spthash, &spte->elem) != NULL) return false;
     return true;
 }
@@ -291,12 +293,8 @@ static bool evict_to_swap(struct sup_pte *spte, block_sector_t idx)
 }
 
 /* Evict a spte present in memory. */
-bool evict_spte(struct sup_pte *spte, uint8_t *vpage) 
+bool evict_spte(struct sup_pte *spte, uint8_t *vpage UNUSED) 
 {
-    // DEBUG
-    printf("%s:%d EVICT SPTE AT %p, fromPD=%p, selfPD=%p\n", thread_current()->name,
-           thread_current()->tid, spte->vpage, spte->pagedir, thread_current()->pagedir);
-
     ASSERT(spte_in_memory(spte));
 
     if(spte_can_write(spte))
@@ -309,37 +307,13 @@ bool evict_spte(struct sup_pte *spte, uint8_t *vpage)
             return evict_to_file(spte);
         }
         bool success = evict_to_swap(spte, sec_idx);  
-        
-        // DEBUG
-        if (pg_ofs(spte->vpage) != 0) {
-            printf("%s:%d EVICT SPTE AT %p : ERROR TO SWAO! PD=%p, PREV AT %p\n", thread_current()->name,
-                   thread_current()->tid, spte->vpage, spte->pagedir, vpage);
-        }
 
         pagedir_clear_page(spte->pagedir, spte->vpage);
-
-        // DEBUG
-        printf("%s:%d EVICT SPTE AT %p : COMPLETE. PD=%p\n",
-               thread_current()->name, thread_current()->tid, spte->vpage,
-               spte->pagedir);
         return success;
     }
     /* read only spte just need to change place. */
     spte_set_place(spte, SPD_FILE);
-
-    // DEBUG
-    if (pg_ofs(spte->vpage) != 0) 
-    {
-        printf("%s:%d EVICT SPTE AT %p : ERROR TO FILE! PD=%p, PREV AT %p\n",
-               thread_current()->name, thread_current()->tid, spte->vpage,
-               spte->pagedir, vpage);
-    }
-
     pagedir_clear_page(spte->pagedir, spte->vpage);
-
-    // DEBUG
-    printf("%s:%d EVICT SPTE AT %p : COMPLETE. PD=%p\n", thread_current()->name,
-           thread_current()->tid, spte->vpage, spte->pagedir);
     return true;
 }
 
