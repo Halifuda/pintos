@@ -161,18 +161,24 @@ bool frame_less_func(const struct hash_elem *a,
     return fteA->paddr < fteB->paddr;
 }
 
-/* return the frame that will be evict next time. */
+/* return the frame that will be evict next time.
+   Alway acquire lock and never release lock, we regarded this function be the start step to evict a frame. 
+   DO call reclaim_frame() or reclaim_frame_struct() after this func to release lock. */
 struct frame *find_evict_frame(void)
 {
+    lock_acquire(&evict_lock);
     return list_entry(list_front(&frame_list), struct frame, l_elem);
+    /* Never release lock for a real evict will happen soon. */
 }
 
-/* re allocate a frame by evicting a frame, write back before call this. */
+/* re allocate a frame by evicting a frame, write back before call this.
+   Assume thread has already acquired evict_lock, so DO call this func after calling find_evict_frame().
+   Realse the lock before return. */
 void *reclaim_frame(bool zero)
 {
-    lock_acquire(&evict_lock);
-
-    struct frame *evt_fte = find_evict_frame();
+    /* Never acquire lock, lock given by find_evict_frame(). */
+    struct frame *evt_fte =
+        list_entry(list_front(&frame_list), struct frame, l_elem);
 
     uint8_t *kpage = evt_fte->paddr;
     remove_fte(evt_fte);
@@ -190,12 +196,14 @@ void *reclaim_frame(bool zero)
 }
 
 /* re allocate a frame by evicting a frame, write back before call this. 
-   Same behavior with reclaim_frame() but return struct. */
+   Same behavior with reclaim_frame() but return struct. 
+   Assume thread has already acquired evict_lock, so DO call this func after calling find_evict_frame().
+   Realse the lock before return. */
 struct frame *reclaim_frame_struct(bool zero) 
 {
-    lock_acquire(&evict_lock);
-
-    struct frame *evt_fte = find_evict_frame();
+    /* Never acquire lock, lock given by find_evict_frame(). */
+    struct frame *evt_fte =
+        list_entry(list_front(&frame_list), struct frame, l_elem);
 
     uint8_t *kpage = evt_fte->paddr;
     remove_fte(evt_fte);
