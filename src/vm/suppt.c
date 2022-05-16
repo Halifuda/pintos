@@ -227,7 +227,7 @@ static void free_memory_spte(struct sup_pte *spte)
     if(spte->file_info != NULL && pagedir_is_dirty(spte->pagedir, spte->vpage))
         spte_write_back(spte, (spte->mem_swap_info->fte)->paddr);
     /* do not free the physical page here, for pagedir_destroy() will free it. */
-    remove_fte(info->fte);
+    free_fte(info->fte);
 }
 
 /* Help function to free a spte in file. */
