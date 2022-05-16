@@ -7,6 +7,9 @@
 #include "userprog/syscall.h"
 #include "swap.h"
 
+// DEBUG
+#include <stdio.h>
+
 /* Find the spte by virtual address in sup pagedir of curent thread. */
 struct sup_pte *page_fault_get_spte(void *vaddr)
 {

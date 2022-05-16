@@ -164,7 +164,13 @@ bool frame_less_func(const struct hash_elem *a,
 /* return the frame that will be evict next time. */
 struct frame *find_evict_frame(void)
 {
-    return list_entry(list_front(&frame_list), struct frame, l_elem);
+    bool have_lock = lock_held_by_current_thread(&evict_lock);
+    if (!have_lock) lock_acquire(&evict_lock);
+    struct frame *res =
+        list_entry(list_front(&frame_list), struct frame, l_elem);
+
+    if (!have_lock) lock_release(&evict_lock);
+    return res;
 }
 
 /* re allocate a frame by evicting a frame, write back before call this. */
