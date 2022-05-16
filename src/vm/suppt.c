@@ -291,8 +291,12 @@ static bool evict_to_swap(struct sup_pte *spte, block_sector_t idx)
 }
 
 /* Evict a spte present in memory. */
-bool evict_spte(struct sup_pte *spte) 
-{ 
+bool evict_spte(struct sup_pte *spte, uint8_t *vpage) 
+{
+    // DEBUG
+    printf("%s:%d EVICT SPTE AT %p, fromPD=%p, selfPD=%p\n", thread_current()->name,
+           thread_current()->tid, spte->vpage, spte->pagedir, thread_current()->pagedir);
+
     ASSERT(spte_in_memory(spte));
 
     if(spte_can_write(spte))
@@ -304,13 +308,38 @@ bool evict_spte(struct sup_pte *spte)
             if (spte->file_info == NULL) PANIC("run out of swap.");
             return evict_to_file(spte);
         }
-        bool success = evict_to_swap(spte, sec_idx);
+        bool success = evict_to_swap(spte, sec_idx);  
+        
+        // DEBUG
+        if (pg_ofs(spte->vpage) != 0) {
+            printf("%s:%d EVICT SPTE AT %p : ERROR TO SWAO! PD=%p, PREV AT %p\n", thread_current()->name,
+                   thread_current()->tid, spte->vpage, spte->pagedir, vpage);
+        }
+
         pagedir_clear_page(spte->pagedir, spte->vpage);
+
+        // DEBUG
+        printf("%s:%d EVICT SPTE AT %p : COMPLETE. PD=%p\n",
+               thread_current()->name, thread_current()->tid, spte->vpage,
+               spte->pagedir);
         return success;
     }
     /* read only spte just need to change place. */
     spte_set_place(spte, SPD_FILE);
+
+    // DEBUG
+    if (pg_ofs(spte->vpage) != 0) 
+    {
+        printf("%s:%d EVICT SPTE AT %p : ERROR TO FILE! PD=%p, PREV AT %p\n",
+               thread_current()->name, thread_current()->tid, spte->vpage,
+               spte->pagedir, vpage);
+    }
+
     pagedir_clear_page(spte->pagedir, spte->vpage);
+
+    // DEBUG
+    printf("%s:%d EVICT SPTE AT %p : COMPLETE. PD=%p\n", thread_current()->name,
+           thread_current()->tid, spte->vpage, spte->pagedir);
     return true;
 }
 

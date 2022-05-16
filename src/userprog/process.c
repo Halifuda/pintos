@@ -105,6 +105,10 @@ start_process (void *file_args_)
   /* If load failed, quit. */
   if (!success) thread_exit();
 
+  // DEBUG
+  printf("%s:%d HAS PD=%p\n", thread_current()->name, thread_current()->tid,
+         thread_current()->pagedir);
+
   /* If load succeeded, set the child_passport load flag. */
   struct child_passport *cp =
       list_entry(thread_current()->chl_elem, struct child_passport, elem);
@@ -255,13 +259,20 @@ process_exit (void)
   uint32_t *pd;
 
   /* print exit status. */
-  printf("%s: exit(%d)\n", thread_current()->name, thread_current()->exid);
+  printf("%s:%d exit(%d)\n", thread_current()->name, thread_current()->tid, thread_current()->exid);
 
   if (cur->exec_file != NULL) file_allow_write(cur->exec_file);
   
   /* Destroy the current process's supplemental page tabel. */
     struct sup_pagedir *spd = cur->sup_pagedir;
+    // DEBUG
+    printf("%s:%d FREEING SUPPD, S-PD=%p\n", thread_current()->name,
+           thread_current()->tid, spd->pagedir);
+
     free_sup_pd(spd);
+
+    // DEBUG
+    printf("%s:%d FREED SUPPD, PD=%p\n", thread_current()->name, thread_current()->tid, cur->pagedir);
 
     /* Close file after free the spd for it will write back sth. */
     fd_vec_free(&thread_current()->fdvector);
@@ -629,8 +640,9 @@ setup_stack (void **esp)
       struct frame *evt_fte = find_evict_frame();
       if(evt_fte != NULL)
       {
-        if(evict_spte((struct sup_pte *)evt_fte->spte))
-            kpage = reclaim_frame(true);
+          if (evict_spte((struct sup_pte *)evt_fte->spte,
+                         ((struct sup_pte *)evt_fte->spte)->vpage))
+              kpage = reclaim_frame(true);
       }
   }
   if (kpage != NULL) 

@@ -77,7 +77,7 @@ bool spte_set_info(struct sup_pte *spte, uint8_t *vpage, uint8_t place, void *da
 struct sup_pte *find_spte(struct sup_pagedir *, void *);
 bool sign_up_spte(struct sup_pte *);
 void free_spte(struct sup_pte *);
-bool evict_spte(struct sup_pte *);
+bool evict_spte(struct sup_pte *, uint8_t *);
 
 /* Hash Table helper. */
 
