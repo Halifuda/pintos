@@ -37,6 +37,11 @@ struct frame *find_frame_entry(uint8_t *);
 void free_fte(struct frame *);
 void remove_fte(struct frame *);
 
+/* Frame Lock Interface. */
+
+void acquire_frame_lock(void);
+void release_frame_lock(void);
+
 /* Hash Table helper. */
 
 unsigned frame_hash_func(const struct hash_elem *, void *);

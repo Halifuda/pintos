@@ -229,3 +229,8 @@ struct frame *reclaim_frame_struct(bool zero)
 
 /* Return number of used(valid) frame. */
 size_t frame_used_size(void) { return hash_size(&frame_hash); }
+
+/* Interface acquiring frame lock. */
+void acquire_frame_lock(void) { lock_acquire(&frame_lock); }
+/* Interface releasing frame lock. */
+void release_frame_lock(void) { lock_release(&frame_lock); }
