@@ -12,7 +12,7 @@
    Each suppt contains multiple s-pte that the process using.
    Each s-pte is accessed from a pte. */
 
-/* Detailed infomation for a sup-pte if the page is in memory. */
+/* Detailed infomation for a sup-pte if the page is in memory or swap. */
 struct memory_swap_info
 {
     struct frame *fte;      /**< frame table entry address. */

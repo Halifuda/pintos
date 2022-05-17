@@ -3,12 +3,10 @@
 #include "threads/malloc.h"
 #include "threads/palloc.h"
 #include "threads/synch.h"
-#include <stdio.h>
 
-static struct hash frame_hash;
-static struct list frame_list;
-static struct lock frame_lock;
-static struct lock evict_lock;
+static struct hash frame_hash;  /**< Frame table(hash). */
+static struct list frame_list;  /**< Frame list handling evict policy. */
+static struct lock frame_lock;  /**< Frame system lock. */
 
 /* Set up the frame table. */
 void frame_table_init(void) 
@@ -16,7 +14,6 @@ void frame_table_init(void)
     hash_init(&frame_hash, frame_hash_func, frame_less_func, NULL);
     list_init(&frame_list);
     lock_init(&frame_lock);
-    lock_init(&evict_lock);
 }
 
 /* Allocate a single frame for user.

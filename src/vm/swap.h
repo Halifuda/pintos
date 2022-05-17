@@ -10,6 +10,7 @@
 
 /* sector count in a page. */
 #define SECCNT ((PGSIZE + BLOCK_SECTOR_SIZE - 1) / BLOCK_SECTOR_SIZE)
+/* sector idx representing ERROR. */
 #define SWAP_SEC_ERROR 0xffffffffu
 
 void swap_slot_init(void);
