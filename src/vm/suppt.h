@@ -67,11 +67,18 @@ void free_sup_pd(struct sup_pagedir *);
 #define SPD_WRITE_MASK 12   /**< 1100: read write mask. */
 #define SPD_RO 4            /**< 0100: read only. */
 #define SPD_RW 8            /**< 1000: read write. */
+/* spte fault infomation, using 5th bits in info. */
+#define SPD_FAULTING 32     /**< 10000: being page fault. */
 
 bool spte_can_write(struct sup_pte *);
 bool spte_in_memory(struct sup_pte *);
 bool spte_in_file(struct sup_pte *);
 bool spte_in_swap(struct sup_pte *);
+bool spte_is_faulting(struct sup_pte *);
+void spte_set_faulting(struct sup_pte *, bool);
+
+/* Evicting Interface. */
+struct frame *find_evict_frame(void);
 
 /* Sup page table entry interface. */
 

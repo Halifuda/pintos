@@ -1,6 +1,6 @@
 #include "suppt.h"
 
-#include <stdio.h>
+#include <list.h>
 
 #include "threads/malloc.h"
 #include "threads/thread.h"
@@ -330,4 +330,51 @@ bool spte_less_func(const struct hash_elem *a, const struct hash_elem *b, void *
     struct sup_pte *pteA = hash_entry(a, struct sup_pte, elem);
     struct sup_pte *pteB = hash_entry(b, struct sup_pte, elem);
     return pteA->vpage < pteB->vpage;
+}
+
+/* return the frame that will be evict next time.
+   Alway acquire lock and never release lock, we regarded this function be the
+   start step to evict a frame. DO call reclaim_frame() or
+   reclaim_frame_struct() after this func to release lock.
+   */
+struct frame *find_evict_frame(void) 
+{
+    acquire_frame_lock();
+    struct list *frame_list = get_frame_list();
+    struct list_elem *e = NULL;
+    struct frame *fte = NULL;
+    struct sup_pte *temp = NULL;
+
+    /* Clock algorithm. */
+    while (temp == NULL) 
+    {
+        e = list_begin(frame_list);
+        while (e != list_end(frame_list)) 
+        {
+            fte = list_entry(e, struct frame, l_elem);
+            temp = fte->spte;
+            if(pagedir_is_accessed(temp->pagedir, temp->vpage))
+                pagedir_set_accessed(temp->pagedir, temp->vpage, false);
+            else if(!spte_is_faulting(temp))
+                break;
+            temp = NULL;
+        }
+    }
+    return fte;
+    /* Never release lock for a real evict will happen soon. */
+}
+
+/* Check the faulting info.
+   true representing this spte is faulting in. */
+bool spte_is_faulting(struct sup_pte *spte)
+{
+    return (spte->info & SPD_FAULTING) == SPD_FAULTING;
+}
+
+/* Set the faulting info. 
+   faulting = true representing this spte is being faulting in. */
+void spte_set_faulting(struct sup_pte *spte, bool faulting) 
+{ 
+    spte->info &= (~SPD_FAULTING);
+    spte->info |= (faulting == true) ? SPD_FAULTING : 0;
 }

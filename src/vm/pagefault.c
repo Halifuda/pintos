@@ -72,6 +72,7 @@ uint8_t *page_fault_load_page(struct sup_pte *spte)
     if (fte == NULL) return NULL;
     uint8_t *kpage = fte->paddr;
 
+    pagedir_set_accessed(spte->pagedir, spte->vpage, true);
     /* Load the page. */
     if (spte_in_file(spte)) 
     {
@@ -120,6 +121,7 @@ bool page_fault_not_present_handler(uint8_t *fault_addr, bool write, bool user U
     struct sup_pte *spte = page_fault_get_spte(fault_addr);
     if (spte == NULL) return false;
 
+    spte_set_faulting(spte, true);
     /* Check if need to load. */
     if (page_fault_need_load(spte, true, write)) 
     {
@@ -129,12 +131,16 @@ bool page_fault_not_present_handler(uint8_t *fault_addr, bool write, bool user U
         {
             /* Install the page to user's space. */
             if (page_fault_install_page(spte, kpage))
+            {
+                spte_set_faulting(spte, false);
                 return true;
+            }
             else /* Failed to install the page. */
                 free_frame(kpage);
         } /* Failed to load. */
     } /* No need to load. */
 
+    spte_set_faulting(spte, false);
     /* Reach here if whatever error occured. */
     return false;
 }

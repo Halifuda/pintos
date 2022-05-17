@@ -26,7 +26,6 @@ struct frame *sign_up_frame(uint8_t *);
 void *get_frame_spte(struct frame *);
 void set_frame_spte(struct frame *, void *);
 void free_frame(uint8_t *);
-struct frame *find_evict_frame(void);
 void *reclaim_frame(bool);
 struct frame *reclaim_frame_struct(bool);
 size_t frame_used_size(void);
@@ -37,10 +36,11 @@ struct frame *find_frame_entry(uint8_t *);
 void free_fte(struct frame *);
 void remove_fte(struct frame *);
 
-/* Frame Lock Interface. */
+/* Frame Interface. */
 
 void acquire_frame_lock(void);
 void release_frame_lock(void);
+struct list *get_frame_list(void);
 
 /* Hash Table helper. */
 
