@@ -68,7 +68,7 @@ void free_sup_pd(struct sup_pagedir *);
 #define SPD_RO 4            /**< 0100: read only. */
 #define SPD_RW 8            /**< 1000: read write. */
 /* spte fault infomation, using 5th bits in info. */
-#define SPD_FAULTING 32     /**< 10000: being page fault. */
+#define SPD_FAULTING 32     /**< 10000: being page fault in or out. */
 
 bool spte_can_write(struct sup_pte *);
 bool spte_in_memory(struct sup_pte *);

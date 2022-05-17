@@ -627,11 +627,14 @@ setup_stack (void **esp)
   if(kpage == NULL)
   {
       struct frame *evt_fte = find_evict_frame();
-      if(evt_fte != NULL)
+      if (evt_fte != NULL) 
       {
-          if (evict_spte((struct sup_pte *)evt_fte->spte,
-                         ((struct sup_pte *)evt_fte->spte)->vpage))
+          struct sup_pte *evtspte = (struct sup_pte *)evt_fte->spte;
+          /* Protect this spte from being evict again. */
+          spte_set_faulting(evtspte, true);
+          if (evict_spte(evtspte, evtspte->vpage))
               kpage = reclaim_frame(true);
+          spte_set_faulting(evtspte, false);
       }
   }
   if (kpage != NULL) 

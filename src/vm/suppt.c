@@ -365,14 +365,14 @@ struct frame *find_evict_frame(void)
 }
 
 /* Check the faulting info.
-   true representing this spte is faulting in. */
+   true representing this spte is faulting in or out. */
 bool spte_is_faulting(struct sup_pte *spte)
 {
     return (spte->info & SPD_FAULTING) == SPD_FAULTING;
 }
 
 /* Set the faulting info. 
-   faulting = true representing this spte is being faulting in. */
+   faulting = true representing this spte is being faulting in or out. */
 void spte_set_faulting(struct sup_pte *spte, bool faulting) 
 { 
     spte->info &= (~SPD_FAULTING);
