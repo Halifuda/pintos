@@ -11,6 +11,7 @@
 #include "threads/thread-fd.h"
 #include "devices/input.h"
 #include "devices/shutdown.h"
+#include "vm/mmap.h"
 
 static void syscall_handler (struct intr_frame *);
 
@@ -671,6 +672,37 @@ static unsigned syscall_tell(struct intr_frame *f)
     return pos;
 }
 
+static mapid_t syscall_mmap_handler(struct intr_frame *f) 
+{
+    int fdid = (int)read_user_int((const uint8_t *)f->esp + 4);
+    uint8_t *addr = (uint8_t *)read_user_int((const uint8_t *)f->esp + 8);
+    enum read_error_number no = get_read_errno();
+    if (no != READ_NO_ERROR) 
+    {
+        /* any bad read int should terminate process. */
+        syscall_exit(f, -1);
+        return 0;
+    }
+    struct file_descriptor *fd = get_fd_ptr(&thread_current()->fdvector, fdid);
+    if (fd == NULL || (!get_fd_right(fd, FD_R) && !get_fd_right(fd, FD_W)) ||
+        !fd->opened)
+        return -1;
+
+    return mmap_handler(fd->file, addr);
+}
+static void syscall_munmap_handler(struct intr_frame *f) 
+{
+    mapid_t mapid = (int)read_user_int((const uint8_t *)f->esp + 4);
+    enum read_error_number no = get_read_errno();
+    if (no != READ_NO_ERROR) 
+    {
+        /* any bad read int should terminate process. */
+        syscall_exit(f, -1);
+        return;
+    }
+    return;
+}
+
 /* Handler to system call.
    Will indirectly acquire read lock. */
 static void
@@ -737,12 +769,25 @@ syscall_handler (struct intr_frame *f)
             set_write_errno(old_w_errno);
             return;
 
+        case SYS_MMAP:
+            res = syscall_mmap_handler(f);
+            f->eax = res;
+            set_read_errno(old_r_errno);
+            set_write_errno(old_w_errno);
+            return;
+
+        case SYS_MUNMAP:
+            syscall_munmap_handler(f);
+            set_read_errno(old_r_errno);
+            set_write_errno(old_w_errno);
+
         case SYS_OPEN:
             res = syscall_open(f);
             f->eax = res;
             set_read_errno(old_r_errno);
             set_write_errno(old_w_errno);
             return;
+
 
         case SYS_FILESIZE:
             res = syscall_filesize(f);

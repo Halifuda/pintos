@@ -20,6 +20,7 @@
 #include "threads/vaddr.h"
 #include "threads/synch.h"
 #include "vm/suppt.h"
+#include "vm/mmap.h"
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -109,6 +110,9 @@ start_process (void *file_args_)
   struct child_passport *cp =
       list_entry(thread_current()->chl_elem, struct child_passport, elem);
   cp->loaded = true;
+
+  /* Setup MMAP table. */
+  thread_current()->mmap_table = mmap_init();
 
   /* copying arguments onto stack, where argv[0] on the very top an so on. */
   char *token = file_args;

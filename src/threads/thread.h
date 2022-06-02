@@ -99,8 +99,9 @@ struct thread
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /**< Page directory. */
-    void *esp;                      /**< Stack Pointer. */
+    void *esp;                          /**< Stack Pointer. */
     void *sup_pagedir;                  /**< Supplemental page directory. */
+    void *mmap_table;                   /**< MMAP table. */
     struct file *exec_file;             /**< executable file. */  
     struct fd_vector fdvector;          /**< fd vector. */
     int exid;                           /**< exit status. */
