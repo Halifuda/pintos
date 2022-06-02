@@ -53,6 +53,7 @@ static struct mmap_entry *alloc_map_entry(struct mmap_list *mmaplist) {
 
 mapid_t mmap_handler(struct file *file, uint8_t *addr) {
     if (pg_ofs(addr) != 0) return -1;
+    if (addr == NULL) return -1;
 
     struct file *handle = file_reopen(file);
 
@@ -123,8 +124,8 @@ void free_mmap(struct mmap_list *mmaplist) {
         n = list_next(e);
         entry = list_entry(e, struct mmap_entry, elem);
         munmap_handler(entry->mapid);
-        free(entry);
         list_remove(e);
+        free(entry);
         e = n;
     }
     free(mmaplist);
