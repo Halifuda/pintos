@@ -35,12 +35,15 @@ static bool load_from_file(struct sup_pte *spte, uint8_t *kpage)
     size_t read_bytes = info->read_bytes;
 
     lock_acquire(&filesys_lock);
+    off_t old_off = file_tell(file);
     file_seek(file, offset);
     if (file_read(file, kpage, read_bytes) != (int)read_bytes) 
     {
+        file_seek(file, old_off);
         lock_release(&filesys_lock);
         return false;
     }
+    file_seek(file, old_off);
     lock_release(&filesys_lock);
     return true;
 }
@@ -202,7 +205,12 @@ bool page_fault_grow_stk_handler(uint8_t *fault_addr, void *esp) {
 /* Check if the stack need to be growed. */
 bool page_fault_haveto_grow(uint8_t *fault_addr, void *esp) {
     uint8_t *stack = (uint8_t *)esp;
-    if (stack >= (uint8_t *)PHYS_BASE || fault_addr >= (uint8_t *)PHYS_BASE) return false;
+    /* 4KB * 1024 * 2 = 8MB stack upper bound. */
+    uint8_t *bound = (uint8_t *)(PHYS_BASE) - 2 * 1024 * PGSIZE;
+    if (stack >= (uint8_t *)PHYS_BASE || fault_addr >= (uint8_t *)PHYS_BASE)
+        return false;
+    if (stack < bound || fault_addr < bound)
+        return false;
     return (fault_addr + 4 == stack) || (fault_addr + 32 == stack) ||
            (fault_addr >= stack);
 }

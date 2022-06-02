@@ -207,18 +207,18 @@ static void spte_write_back(struct sup_pte *spte, uint8_t *kpage)
     off_t ofs = spte->file_info->offset;
     size_t bytes = spte->file_info->read_bytes;
 
-    file = file_reopen(file);
-    if (file == NULL) return;
+    struct file *handle = file_reopen(file);
+    if (handle == NULL) return;
     while (bytes > 0) 
     {
-        size_t written = file_write_at(file, kpage, bytes, ofs);
+        size_t written = file_write_at(handle, kpage, bytes, ofs);
         bytes -= written;
 
         /* In this case, failed to write any bytes when not reach EOF, 
             quit immediately to avoid infinite loop. */
-        if (written == 0 && ofs < file_length(file)) break;
+        if (written == 0 && ofs < file_length(handle)) break;
     }
-    file_close(file);
+    file_close(handle);
 }
 
 /* Help function to free a frame held by a spte. */

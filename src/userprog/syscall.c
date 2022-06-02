@@ -672,6 +672,7 @@ static unsigned syscall_tell(struct intr_frame *f)
     return pos;
 }
 
+/* MMAP handler. Check the fd, leaving the address check. */
 static mapid_t syscall_mmap_handler(struct intr_frame *f) 
 {
     int fdid = (int)read_user_int((const uint8_t *)f->esp + 4);
@@ -690,6 +691,8 @@ static mapid_t syscall_mmap_handler(struct intr_frame *f)
 
     return mmap_handler(fd->file, addr);
 }
+
+/* MUNMAP handler. */
 static void syscall_munmap_handler(struct intr_frame *f) 
 {
     mapid_t mapid = (int)read_user_int((const uint8_t *)f->esp + 4);

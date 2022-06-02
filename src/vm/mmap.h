@@ -12,17 +12,19 @@
 
 typedef int mapid_t;
 
+/* Single MMAP record entry. */
 struct mmap_entry {
-    mapid_t mapid;
-    struct file *file;
-    uint8_t *addr;
-    size_t mapsize;
-    struct list_elem elem;
+    mapid_t mapid;          /**< mapid. */
+    struct file *file;      /**< file pointer. */
+    uint8_t *addr;          /**< map address. */
+    size_t mapsize;         /**< mapped size. */
+    struct list_elem elem;  /**< list element. */
 };
 
+/* MMAP entries list, held by thread. */
 struct mmap_list {
-    int maxid;
-    struct list maps;
+    int maxid;              /**< max used mapid. */
+    struct list maps;       /**< list. */
 };
 
 void *mmap_init(void);

@@ -7,6 +7,7 @@
 #include "threads/vaddr.h"
 #include "suppt.h"
 
+/* Initiate a mmap list, return its address pointer. */
 void *mmap_init(void) { 
     struct mmap_list *table =
         (struct mmap_list *)malloc(sizeof(struct mmap_list));
@@ -16,6 +17,7 @@ void *mmap_init(void) {
     return table;
 }
 
+/* Remove all the spte that used for MMAP by give the mapped size and address. */
 static void remove_map_spte(off_t size, uint8_t *addr) {
     struct sup_pagedir *spd = (struct sup_pagedir *)thread_current()->sup_pagedir;
     struct sup_pte *spte;
@@ -30,6 +32,7 @@ static void remove_map_spte(off_t size, uint8_t *addr) {
     }
 }
 
+/* Find an entry from a MMAP list by mapid. */
 static struct mmap_entry *find_mmap_entry(struct mmap_list *mmaplist, mapid_t id) {
     struct list_elem *e = list_begin(&mmaplist->maps);
     struct mmap_entry *entry = NULL;
@@ -41,6 +44,7 @@ static struct mmap_entry *find_mmap_entry(struct mmap_list *mmaplist, mapid_t id
     return NULL;
 }
 
+/* Allocate a MMAp entry to a MMAP list. */
 static struct mmap_entry *alloc_map_entry(struct mmap_list *mmaplist) {
     ASSERT(mmaplist != NULL);
     struct mmap_entry *entry =
@@ -51,6 +55,7 @@ static struct mmap_entry *alloc_map_entry(struct mmap_list *mmaplist) {
     return entry;
 }
 
+/* MMAP handler. */
 mapid_t mmap_handler(struct file *file, uint8_t *addr) {
     if (pg_ofs(addr) != 0) return -1;
     if (addr == NULL) return -1;
@@ -62,6 +67,7 @@ mapid_t mmap_handler(struct file *file, uint8_t *addr) {
 
     off_t offset = 0;
     uint8_t *upage = addr;
+    /* map by page. */
     while((size_t)offset < size) {
         size_t read_bytes = size - (size_t)offset;
         if (read_bytes > PGSIZE) read_bytes = PGSIZE;
@@ -73,6 +79,7 @@ mapid_t mmap_handler(struct file *file, uint8_t *addr) {
             return -1;
         }
 
+        /* code from process.c. */
         struct sup_pte *spte = alloc_spte(true);
         if (spte == NULL) {
             remove_map_spte(offset, addr);
@@ -95,6 +102,7 @@ mapid_t mmap_handler(struct file *file, uint8_t *addr) {
 
     file_close(handle);
 
+    /* allocate a MMAP entry. */
     struct mmap_entry *entry = alloc_map_entry((struct mmap_list *)thread_current()->mmap_table);
     if(entry == NULL) {
         remove_map_spte(size, addr);
@@ -108,6 +116,8 @@ mapid_t mmap_handler(struct file *file, uint8_t *addr) {
     list_push_back(&((struct mmap_list *)(thread_current()->mmap_table))->maps, &entry->elem);
     return entry->mapid;
 }
+
+/* MUNMAP handler. */
 void munmap_handler(mapid_t mapid) {
     struct mmap_entry *entry = find_mmap_entry(
         (struct mmap_list *)thread_current()->mmap_table, mapid);
@@ -115,8 +125,9 @@ void munmap_handler(mapid_t mapid) {
     list_remove(&entry->elem);
 }
 
-void free_mmap(struct mmap_list *mmaplist) { 
-    ASSERT(mmaplist != NULL);
+/* Free the whole MMAP. */
+void free_mmap(struct mmap_list *mmaplist) {
+    if (mmaplist == NULL) return;
     struct list_elem *e = list_begin(&mmaplist->maps);
     struct list_elem *n = NULL;
     struct mmap_entry *entry = NULL;
