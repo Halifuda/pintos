@@ -65,6 +65,13 @@ mapid_t mmap_handler(struct file *file, uint8_t *addr) {
         size_t read_bytes = size - (size_t)offset;
         if (read_bytes > PGSIZE) read_bytes = PGSIZE;
 
+        struct sup_pagedir *spd =
+            (struct sup_pagedir *)thread_current()->sup_pagedir;
+        if (find_spte(spd, upage) != NULL) {
+            remove_map_spte(offset, addr);
+            return -1;
+        }
+
         struct sup_pte *spte = alloc_spte(true);
         if (spte == NULL) {
             remove_map_spte(offset, addr);
@@ -105,4 +112,20 @@ void munmap_handler(mapid_t mapid) {
         (struct mmap_list *)thread_current()->mmap_table, mapid);
     remove_map_spte(entry->mapsize, entry->addr);
     list_remove(&entry->elem);
+}
+
+void free_mmap(struct mmap_list *mmaplist) { 
+    ASSERT(mmaplist != NULL);
+    struct list_elem *e = list_begin(&mmaplist->maps);
+    struct list_elem *n = NULL;
+    struct mmap_entry *entry = NULL;
+    while( e != list_end(&mmaplist->maps)) {
+        n = list_next(e);
+        entry = list_entry(e, struct mmap_entry, elem);
+        munmap_handler(entry->mapid);
+        free(entry);
+        list_remove(e);
+        e = n;
+    }
+    free(mmaplist);
 }

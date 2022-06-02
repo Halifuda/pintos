@@ -700,6 +700,7 @@ static void syscall_munmap_handler(struct intr_frame *f)
         syscall_exit(f, -1);
         return;
     }
+    munmap_handler(mapid);
     return;
 }
 

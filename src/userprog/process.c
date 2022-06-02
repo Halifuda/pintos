@@ -262,7 +262,9 @@ process_exit (void)
   printf("%s: exit(%d)\n", thread_current()->name, thread_current()->exid);
 
   if (cur->exec_file != NULL) file_allow_write(cur->exec_file);
-  
+
+  free_mmap(cur->mmap_table);
+
   /* Destroy the current process's supplemental page tabel. */
     struct sup_pagedir *spd = cur->sup_pagedir;
     free_sup_pd(spd);

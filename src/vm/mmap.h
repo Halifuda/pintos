@@ -28,5 +28,6 @@ struct mmap_list {
 void *mmap_init(void);
 mapid_t mmap_handler(struct file *, uint8_t *);
 void munmap_handler(mapid_t);
+void free_mmap(struct mmap_list *);
 
 #endif /**< vm/mmap.h */
