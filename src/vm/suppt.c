@@ -253,7 +253,9 @@ static void free_swap_spte(struct sup_pte *spte)
     return; 
 }
 
-/* Free a spte and delete it from sup pagedir. */
+/* Free a spte and delete it from sup pagedir. 
+    If need to free a single spte and remainding sup pagedir,
+    do not use this, but use delete_spte(). */
 void free_spte(struct sup_pte *spte) 
 {
     struct sup_pagedir *spd =
@@ -271,6 +273,27 @@ void free_spte(struct sup_pte *spte)
         free(spte->file_info);
     }
     pagedir_clear_page(spd->pagedir, spte->vpage);
+    free(spte);
+}
+
+/* Free a spte and delete it from sup pagedir.
+    Use this if need to delete a single spte and 
+    remainding sup pagedir. */
+void delete_spte(struct sup_pte *spte) {
+    struct sup_pagedir *spd =
+        (struct sup_pagedir *)thread_current()->sup_pagedir;
+    if (spte == NULL || spd == NULL) return;
+    if (spte->mem_swap_info != NULL) {
+        if (spte_in_memory(spte)) free_memory_spte(spte);
+        if (spte_in_swap(spte)) free_swap_spte(spte);
+        free(spte->mem_swap_info);
+    }
+    if (spte->file_info != NULL) {
+        free_file_spte(spte);
+        free(spte->file_info);
+    }
+    pagedir_clear_page(spd->pagedir, spte->vpage);
+    hash_delete(&spd->spthash, &spte->elem);
     free(spte);
 }
 

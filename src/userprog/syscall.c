@@ -781,6 +781,7 @@ syscall_handler (struct intr_frame *f)
             syscall_munmap_handler(f);
             set_read_errno(old_r_errno);
             set_write_errno(old_w_errno);
+            return;
 
         case SYS_OPEN:
             res = syscall_open(f);

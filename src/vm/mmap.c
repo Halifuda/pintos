@@ -24,7 +24,7 @@ static void remove_map_spte(off_t size, uint8_t *addr) {
     while(off < size) {
         spte = find_spte(spd, upage);
         if (spte == NULL) return;
-        free_spte(spte);
+        delete_spte(spte);
         off += PGSIZE;
         upage += PGSIZE;
     }
