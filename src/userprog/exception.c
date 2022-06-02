@@ -155,12 +155,12 @@ page_fault (struct intr_frame *f)
   if (not_present) 
   {
       res = page_fault_not_present_handler(fault_addr, write, user);
-      /* kill process if failed to handle not_present. */
-      if (!res) 
-      {
-         if(user)
-            kill(f);
-      }
+      /* If fail, check if need to grow stk. */
+      if (!res) res = page_fault_grow_stk_handler(fault_addr, f->esp);
+      /* kill process if failed to handle not_present and grow stk. */
+      if (!res) {
+          if (user) kill(f);
+          }
   }
   else if(user) /* present but page fault, always kill. */
       kill(f);

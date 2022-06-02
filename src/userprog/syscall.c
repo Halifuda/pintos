@@ -676,6 +676,8 @@ static unsigned syscall_tell(struct intr_frame *f)
 static void
 syscall_handler (struct intr_frame *f) 
 {
+    /* save user stack pointer. */
+    thread_current()->esp = f->esp;
     /* read syscall number. */
     enum read_error_number old_r_errno = get_read_errno();
     enum write_error_number old_w_errno = get_write_errno();

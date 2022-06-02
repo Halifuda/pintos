@@ -147,3 +147,62 @@ bool page_fault_not_present_handler(uint8_t *fault_addr, bool write, bool user U
     /* Reach here if whatever error occured. */
     return false;
 }
+
+/* Copy from process.c. */
+static bool install_page(void *upage, void *kpage, bool writable) {
+    struct thread *t = thread_current();
+
+    /* Verify that there's not already a page at that virtual
+       address, then map our page there. */
+    return (pagedir_get_page(t->pagedir, upage) == NULL &&
+            pagedir_set_page(t->pagedir, upage, kpage, writable));
+}
+
+/* Handler function for page_fault to handle stack growth related fault.
+   Given fault addr, and esp in intr_frame. */
+bool page_fault_grow_stk_handler(uint8_t *fault_addr, void *esp) {
+    if(page_fault_haveto_grow(fault_addr, esp) || page_fault_haveto_grow(fault_addr, thread_current()->esp)) {
+        uint8_t *kpage;
+        bool success = false;
+
+        /* allocate a physic page. */
+        kpage = alloc_frame(true);
+        if (kpage == NULL) {
+            struct frame *evt_fte = find_evict_frame();
+            if (evt_fte != NULL) {
+                struct sup_pte *evtspte = (struct sup_pte *)evt_fte->spte;
+                /* Protect this spte from being evict again. */
+                spte_set_faulting(evtspte, true);
+                if (evict_spte(evtspte, evtspte->vpage))
+                    kpage = reclaim_frame(true);
+                spte_set_faulting(evtspte, false);
+            }
+        }
+        if (kpage != NULL) {
+            /* allocate a sup-pte. */
+            struct sup_pte *spte = alloc_spte(true);
+            spte_set_info(spte, (uint8_t *)pg_round_down(fault_addr), SPD_MEM,
+                          find_frame_entry(kpage), NULL, NULL);
+            if (!sign_up_spte(spte)) {
+                free_spte(spte);
+                free_frame(kpage);
+                return false;
+            }
+            success = install_page((void *)pg_round_down(fault_addr), kpage, true);
+            if (success) {
+                set_frame_spte(spte->mem_swap_info->fte, (void *)spte);
+            } else
+                free_frame(kpage);
+        }
+        return success;
+    }
+    return false;
+}
+
+/* Check if the stack need to be growed. */
+bool page_fault_haveto_grow(uint8_t *fault_addr, void *esp) {
+    uint8_t *stack = (uint8_t *)esp;
+    if (stack >= (uint8_t *)PHYS_BASE || fault_addr >= (uint8_t *)PHYS_BASE) return false;
+    return (fault_addr + 4 == stack) || (fault_addr + 32 == stack) ||
+           (fault_addr >= stack);
+}
