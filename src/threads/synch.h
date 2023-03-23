@@ -20,6 +20,7 @@ void sema_self_test (void);
 /** Lock. */
 struct lock 
   {
+    struct donate_record *record; /**< pointer to the record related to this lock. */
     struct thread *holder;      /**< Thread holding lock (for debugging). */
     struct semaphore semaphore; /**< Binary semaphore controlling access. */
   };
@@ -40,6 +41,11 @@ void cond_init (struct condition *);
 void cond_wait (struct condition *, struct lock *);
 void cond_signal (struct condition *, struct lock *);
 void cond_broadcast (struct condition *, struct lock *);
+
+bool cond_list_priority_less_func(const struct list_elem *,
+                                    const struct list_elem *, void *);
+bool cond_list_priority_equal_func(const struct list_elem *,
+                                     const struct list_elem *, void *);
 
 /** Optimization barrier.
 
